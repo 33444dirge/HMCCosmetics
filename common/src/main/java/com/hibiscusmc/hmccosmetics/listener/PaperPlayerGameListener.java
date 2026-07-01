@@ -1,12 +1,11 @@
 package com.hibiscusmc.hmccosmetics.listener;
 
 import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
-import com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
+import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import io.papermc.paper.event.entity.EntityEquipmentChangedEvent;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -24,7 +23,7 @@ public class PaperPlayerGameListener implements Listener {
         for (EquipmentSlot slot : event.getEquipmentChanges().keySet())
             user.updateCosmetic(equipmentSlotToCosmeticType(slot));
 
-        Bukkit.getScheduler().runTaskLater(HMCCosmeticsPlugin.getInstance(), player::updateInventory, 2);
+        HMCCScheduler.runEntityLater(player, player::updateInventory, 2);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
