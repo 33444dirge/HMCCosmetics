@@ -4,11 +4,12 @@ import com.hibiscusmc.hmccosmetics.gui.type.types.TypeCosmetic;
 import com.hibiscusmc.hmccosmetics.gui.type.types.TypeEmpty;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Types {
 
-    private static final HashMap<String, Type> types = new HashMap<>();
+    private static final Map<String, Type> types = new ConcurrentHashMap<>();
 
     private static final TypeCosmetic TYPE_COSMETIC = new TypeCosmetic();
     private static final TypeEmpty TYPE_EMPTY = new TypeEmpty();

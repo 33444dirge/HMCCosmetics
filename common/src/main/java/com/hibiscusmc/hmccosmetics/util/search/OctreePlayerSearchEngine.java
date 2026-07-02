@@ -10,15 +10,15 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class OctreePlayerSearchEngine extends PlayerSearchEngine {
 
-    private final Map<UUID, Octree<Player>> worldOctrees = new HashMap<>();
-    private final Map<UUID, Octree.Point3D> playerPositions = new HashMap<>();
+    private final Map<UUID, Octree<Player>> worldOctrees = new ConcurrentHashMap<>();
+    private final Map<UUID, Octree.Point3D> playerPositions = new ConcurrentHashMap<>();
 
     private final int WORLD_HALF_SIZE;
 
@@ -40,7 +40,7 @@ public class OctreePlayerSearchEngine extends PlayerSearchEngine {
         return new Octree.Point3D(location.getX(), location.getY(), location.getZ());
     }
 
-    public boolean addPlayer(Player player) {
+    public synchronized boolean addPlayer(Player player) {
         Octree<Player> octree = getOrCreateOctree(player.getWorld());
         Octree.Point3D point = toPoint3D(player.getLocation());
 
@@ -51,7 +51,7 @@ public class OctreePlayerSearchEngine extends PlayerSearchEngine {
         return false;
     }
 
-    public boolean removePlayer(Player player) {
+    public synchronized boolean removePlayer(Player player) {
         Octree<Player> octree = worldOctrees.get(player.getWorld().getUID());
         if (octree == null) return false;
 
@@ -61,13 +61,13 @@ public class OctreePlayerSearchEngine extends PlayerSearchEngine {
         return false;
     }
 
-    public void updatePlayerPosition(Player player) {
+    public synchronized void updatePlayerPosition(Player player) {
         removePlayer(player);
         addPlayer(player);
     }
 
     @Override
-    public List<Player> getPlayersInRange(Location location, double range) {
+    public synchronized List<Player> getPlayersInRange(Location location, double range) {
         Octree<Player> octree = worldOctrees.get(location.getWorld().getUID());
         if (octree == null) return Collections.emptyList();
 
@@ -81,7 +81,7 @@ public class OctreePlayerSearchEngine extends PlayerSearchEngine {
     }
 
 
-    public void clear() {
+    public synchronized void clear() {
         worldOctrees.clear();
         playerPositions.clear();
     }
@@ -91,9 +91,9 @@ public class OctreePlayerSearchEngine extends PlayerSearchEngine {
         if (event.hasChangedBlock()) updatePlayerPosition(event.getPlayer());
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        updatePlayerPosition(event.getPlayer());
+    @Override
+    public void handlePlayerPosition(Player player) {
+        updatePlayerPosition(player);
     }
 
     @EventHandler(priority = EventPriority.NORMAL)

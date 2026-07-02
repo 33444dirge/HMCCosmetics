@@ -21,4 +21,8 @@ public abstract class PlayerSearchEngine implements Listener {
     public List<Player> getPlayersInRange(Location location, double range) {
         return List.of();
     }
+
+    public void handlePlayerPosition(Player player) {
+        // Override
+    }
 }

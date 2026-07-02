@@ -14,21 +14,22 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class UserEntity {
 
     @Getter
-    private UUID owner;
+    private final UUID owner;
     @Getter
-    private List<Player> viewers = new ArrayList<>();
+    private final List<Player> viewers = new CopyOnWriteArrayList<>();
     @Getter @Setter
     private Long viewerLastUpdate = 0L;
     @Getter @Setter
     private Long lastPositionUpdate = 0L;
-    @Getter @Setter
-    private List<Integer> ids = new ArrayList<>();
     @Getter
-    private Location location;
+    private List<Integer> ids = new CopyOnWriteArrayList<>();
+    @Getter
+    private volatile Location location;
 
     public UserEntity(UUID owner) {
         this.owner = owner;
@@ -112,6 +113,10 @@ public class UserEntity {
             HMCCPacketManager.sendTeleportPacket(entity, location, false, getViewers());
         }
         setLastPositionUpdate(System.currentTimeMillis());
+    }
+
+    public void setIds(List<Integer> ids) {
+        this.ids = new CopyOnWriteArrayList<>(ids);
     }
 
     public void setRotation(int yaw) {

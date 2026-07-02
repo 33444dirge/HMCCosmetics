@@ -20,7 +20,6 @@ import lombok.Setter;
 import me.lojosho.hibiscuscommons.nms.NMSHandlers;
 import me.lojosho.hibiscuscommons.nms.NMSPacketBuilder;
 import me.lojosho.hibiscuscommons.nms.NMSPacketSender;
-import me.lojosho.hibiscuscommons.packets.wrapper.PacketWrapper;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import org.bukkit.*;
@@ -28,7 +27,6 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
@@ -133,7 +131,7 @@ public class UserWardrobeManager {
                 return;
             }
 
-            List<PacketWrapper> viewerPackets = new ArrayList<>();
+            List<Object> viewerPackets = new ArrayList<>();
 
             // Armorstand
             viewerPackets.add(packetBuilder.buildEntitySpawnPacket(ARMORSTAND_ID, UUID.randomUUID(), EntityType.ARMOR_STAND, viewingLocation));
@@ -142,7 +140,7 @@ public class UserWardrobeManager {
             viewerPackets.add(packetBuilder.buildEntityRotateHeadPacket(ARMORSTAND_ID, viewingLocation));
 
             // Player
-            player.teleport(viewingLocation, PlayerTeleportEvent.TeleportCause.PLUGIN);
+            HMCCScheduler.teleportAsync(player, viewingLocation);
             player.setInvisible(true);
             viewerPackets.add(packetBuilder.buildPlayerGamemodeChangePacket(GameMode.SPECTATOR));
             viewerPackets.add(packetBuilder.buildEntityCameraPacket(ARMORSTAND_ID));
@@ -191,7 +189,6 @@ public class UserWardrobeManager {
 
                     Location balloonLocation = npcLocation.clone().add(cosmetic.getBalloonOffset());
                     HMCCPacketManager.sendTeleportPacket(user.getBalloonManager().getPufferfishBalloonId(), balloonLocation, false, viewer);
-                    user.getBalloonManager().getModelEntity().teleport(balloonLocation);
                     user.getBalloonManager().setLocation(balloonLocation);
                 }
             }
@@ -262,7 +259,7 @@ public class UserWardrobeManager {
             HMCCPacketManager.sendRemovePlayerPacket(player, WARDROBE_UUID, viewer); // Success
 
             // Player
-            packetBuilder.buildEntityCameraPacket(player.getEntityId()).sendPacket(viewer);
+            HMCCPacketManager.sendPacket(packetBuilder.buildEntityCameraPacket(player.getEntityId()), viewer);
             user.getPlayer().setInvisible(false);
 
             // Armorstand
@@ -272,11 +269,11 @@ public class UserWardrobeManager {
             if (WardrobeSettings.isForceExitGamemode()) {
                 MessagesUtil.sendDebugMessages("Force Exit Gamemode " + WardrobeSettings.getExitGamemode());
                 player.setGameMode(WardrobeSettings.getExitGamemode());
-                packetBuilder.buildPlayerGamemodeChangePacket(WardrobeSettings.getExitGamemode()).sendPacket(viewer);
+                HMCCPacketManager.sendPacket(packetBuilder.buildPlayerGamemodeChangePacket(WardrobeSettings.getExitGamemode()), viewer);
             } else {
                 MessagesUtil.sendDebugMessages("Original Gamemode " + this.originalGamemode);
                 player.setGameMode(this.originalGamemode);
-                packetBuilder.buildPlayerGamemodeChangePacket(this.originalGamemode).sendPacket(viewer);
+                HMCCPacketManager.sendPacket(packetBuilder.buildPlayerGamemodeChangePacket(this.originalGamemode), viewer);
             }
             user.showPlayer();
 
@@ -290,7 +287,7 @@ public class UserWardrobeManager {
                 //PacketManager.sendLeashPacket(VIEWER.getBalloonEntity().getPufferfishBalloonId(), player.getEntityId(), viewer);
             }
 
-            player.teleport(Objects.requireNonNullElseGet(exitLocation, () -> player.getWorld().getSpawnLocation()), PlayerTeleportEvent.TeleportCause.PLUGIN);
+            HMCCScheduler.teleportAsync(player, Objects.requireNonNullElseGet(exitLocation, () -> player.getWorld().getSpawnLocation()));
 
             HashMap<EquipmentSlot, ItemStack> items = new HashMap<>();
             for (EquipmentSlot slot : HMCCInventoryUtils.getPlayerArmorSlots()) {
@@ -302,7 +299,7 @@ public class UserWardrobeManager {
                 items.put(EquipmentSlot.HEAD, player.getInventory().getHelmet());
             }
              */
-            packetBuilder.buildEntityEquipmentSlotUpdatePacket(player.getEntityId(), items).sendPacket(viewer);
+            HMCCPacketManager.sendPacket(packetBuilder.buildEntityEquipmentSlotUpdatePacket(player.getEntityId(), items), viewer);
 
             if (WardrobeSettings.isEnabledBossbar()) {
                 //Audience target = BukkitAudiences.create(HMCCosmeticsPlugin.getInstance()).player(player);
@@ -339,7 +336,7 @@ public class UserWardrobeManager {
                 int rotationSpeed = WardrobeSettings.getRotationSpeed();
                 int newYaw = HMCCServerUtils.getNextYaw(yaw - 30, rotationSpeed);
                 location.setYaw(newYaw);
-                packetBuilder.buildEntityRotatePacket(NPC_ID, newYaw, 0, false).sendPacket(viewer);
+                HMCCPacketManager.sendPacket(packetBuilder.buildEntityRotatePacket(NPC_ID, newYaw, 0, false), viewer);
                 int nextyaw = HMCCServerUtils.getNextYaw(yaw, rotationSpeed);
                 data.set(nextyaw);
 
@@ -349,7 +346,7 @@ public class UserWardrobeManager {
 
                 if (user.hasCosmeticInSlot(CosmeticSlot.BACKPACK) && user.getUserBackpackManager() != null) {
                     HMCCPacketManager.sendTeleportPacket(user.getUserBackpackManager().getFirstArmorStandId(), location, false, viewer);
-                    packetBuilder.buildEntityMountPacket(NPC_ID, new int[]{user.getUserBackpackManager().getFirstArmorStandId()}).sendPacket(viewer);
+                    HMCCPacketManager.sendPacket(packetBuilder.buildEntityMountPacket(NPC_ID, new int[]{user.getUserBackpackManager().getFirstArmorStandId()}), viewer);
                     user.getUserBackpackManager().getEntityManager().setRotation(nextyaw);
                     HMCCPacketManager.sendEntityDestroyPacket(user.getUserBackpackManager().getFirstArmorStandId(), outsideViewers);
                 }

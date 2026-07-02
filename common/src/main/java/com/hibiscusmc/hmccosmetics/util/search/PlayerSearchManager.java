@@ -29,6 +29,10 @@ public class PlayerSearchManager {
         return engine.getPlayersInRange(location, range);
     }
 
+    public void handlePlayerPosition(@NotNull Player player) {
+        engine.handlePlayerPosition(player);
+    }
+
     public enum SearchEngine {
         BUKKIT,
         OCTREE

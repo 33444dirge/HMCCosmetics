@@ -10,7 +10,6 @@ import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -27,7 +26,7 @@ public abstract class SQLData extends Data {
                 try (ResultSet rs = preparedStatement.executeQuery()) {
                     if (rs.next()) {
                         String rawData = rs.getString("COSMETICS");
-                        HashMap<CosmeticSlot, Map.Entry<Cosmetic, Integer>> cosmetics = deserializeData(rawData);
+                        Map<CosmeticSlot, Map.Entry<Cosmetic, Integer>> cosmetics = deserializeData(rawData);
                         data.setCosmetics(cosmetics);
                     }
                 }

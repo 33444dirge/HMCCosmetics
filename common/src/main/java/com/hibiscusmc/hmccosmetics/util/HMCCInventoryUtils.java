@@ -11,21 +11,19 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class HMCCInventoryUtils {
 
-    private static final Map<CosmeticSlot, EquipmentSlot> SLOT_MAP = new HashMap<>();
-    static {
-        SLOT_MAP.put(CosmeticSlot.HELMET, EquipmentSlot.HEAD);
-        SLOT_MAP.put(CosmeticSlot.CHESTPLATE, EquipmentSlot.CHEST);
-        SLOT_MAP.put(CosmeticSlot.LEGGINGS, EquipmentSlot.LEGS);
-        SLOT_MAP.put(CosmeticSlot.BOOTS, EquipmentSlot.FEET);
-        SLOT_MAP.put(CosmeticSlot.OFFHAND, EquipmentSlot.OFF_HAND);
-        SLOT_MAP.put(CosmeticSlot.MAINHAND, EquipmentSlot.HAND);
-    }
+    private static final Map<CosmeticSlot, EquipmentSlot> SLOT_MAP = Map.of(
+            CosmeticSlot.HELMET, EquipmentSlot.HEAD,
+            CosmeticSlot.CHESTPLATE, EquipmentSlot.CHEST,
+            CosmeticSlot.LEGGINGS, EquipmentSlot.LEGS,
+            CosmeticSlot.BOOTS, EquipmentSlot.FEET,
+            CosmeticSlot.OFFHAND, EquipmentSlot.OFF_HAND,
+            CosmeticSlot.MAINHAND, EquipmentSlot.HAND
+    );
 
     public static int getPacketArmorSlot(final EquipmentSlot slot) {
         return switch (slot) {

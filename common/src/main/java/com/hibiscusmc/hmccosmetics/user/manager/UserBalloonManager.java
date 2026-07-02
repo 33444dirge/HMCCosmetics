@@ -5,6 +5,7 @@ import com.hibiscusmc.hmccosmetics.config.Settings;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBalloonType;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
+import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import com.hibiscusmc.hmccosmetics.util.HMCCServerUtils;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import com.hibiscusmc.hmccosmetics.util.packets.HMCCPacketManager;
@@ -21,6 +22,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
@@ -38,6 +40,7 @@ public class UserBalloonManager {
     @Getter
     private UserBalloonPufferfish pufferfish;
     private final ArmorStand modelEntity;
+    private volatile Location location;
 
     public UserBalloonManager(CosmeticUser user, @NotNull Location location) {
         this.user = user;
@@ -53,6 +56,7 @@ public class UserBalloonManager {
             e.setAI(false);
             e.getPersistentDataContainer().set(HMCCServerUtils.getCosmemeticMobKey(), PersistentDataType.BOOLEAN, true);
         });
+        this.location = location.clone();
     }
 
     public void spawnModel(@NotNull CosmeticBalloonType cosmeticBalloonType, Color color) {
@@ -114,11 +118,13 @@ public class UserBalloonManager {
                 return;
             }
 
-            entity.destroy();
-            MessagesUtil.sendDebugMessages("Balloon Model Engine Removal");
+            HMCCScheduler.runEntity(modelEntity, () -> {
+                entity.destroy();
+                MessagesUtil.sendDebugMessages("Balloon Model Engine Removal");
+            });
         }
 
-        modelEntity.remove();
+        HMCCScheduler.runEntity(modelEntity, modelEntity::remove);
         cosmeticBalloonType = null;
         MessagesUtil.sendDebugMessages("Balloon Entity Removed");
     }
@@ -140,7 +146,8 @@ public class UserBalloonManager {
             return;
         }
         if (balloonType == BalloonType.ITEM) {
-            modelEntity.getEquipment().setHelmet(user.getUserCosmeticItem(cosmeticBalloonType));
+            ItemStack item = user.getUserCosmeticItem(cosmeticBalloonType);
+            HMCCScheduler.runEntity(modelEntity, () -> modelEntity.getEquipment().setHelmet(item));
         }
     }
     public void removePlayerFromModel(final Player viewer) {
@@ -152,7 +159,7 @@ public class UserBalloonManager {
             return;
         }
         if (balloonType == BalloonType.ITEM) {
-            modelEntity.getEquipment().clear();
+            HMCCScheduler.runEntity(modelEntity, () -> modelEntity.getEquipment().clear());
             return;
         }
     }
@@ -179,11 +186,12 @@ public class UserBalloonManager {
     }
 
     public Location getLocation() {
-        return this.getModelEntity().getLocation();
+        return this.location.clone();
     }
 
     public void setLocation(Location location) {
-        this.getModelEntity().teleport(location);
+        this.location = location.clone();
+        HMCCScheduler.teleportAsync(this.getModelEntity(), location);
     }
 
     public Vector getVelocity() {
@@ -191,7 +199,7 @@ public class UserBalloonManager {
     }
 
     public void setVelocity(Vector vector) {
-        this.getModelEntity().setVelocity(vector);
+        HMCCScheduler.runEntity(modelEntity, () -> this.getModelEntity().setVelocity(vector));
     }
 
     public void sendRemoveLeashPacket(List<Player> viewer) {

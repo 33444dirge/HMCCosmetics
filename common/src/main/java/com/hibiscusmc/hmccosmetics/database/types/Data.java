@@ -14,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class Data {
 
@@ -49,8 +50,8 @@ public abstract class Data {
     }
 
     @NotNull
-    public final HashMap<CosmeticSlot, Map.Entry<Cosmetic, Integer>> deserializeData(@NotNull String raw) {
-        HashMap<CosmeticSlot, Map.Entry<Cosmetic, Integer>> cosmetics = new HashMap<>();
+    public final Map<CosmeticSlot, Map.Entry<Cosmetic, Integer>> deserializeData(@NotNull String raw) {
+        Map<CosmeticSlot, Map.Entry<Cosmetic, Integer>> cosmetics = new ConcurrentHashMap<>();
 
         String[] rawData = raw.split(",");
         ArrayList<CosmeticUser.HiddenReason> hiddenReason = new ArrayList<>();

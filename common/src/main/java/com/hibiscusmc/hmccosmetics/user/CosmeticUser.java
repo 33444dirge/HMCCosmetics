@@ -47,21 +47,23 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Level;
 
 public class CosmeticUser implements CosmeticHolder {
     @Getter
     private final UUID uniqueId;
     private HMCCScheduler.TaskHandle tickTask;
-    private final HashMap<CosmeticSlot, Cosmetic> playerCosmetics = new HashMap<>();
+    private final Map<CosmeticSlot, Cosmetic> playerCosmetics = new ConcurrentHashMap<>();
     private UserWardrobeManager userWardrobeManager;
     private UserBalloonManager userBalloonManager;
     @Getter @Nullable
     private UserBackpackManager userBackpackManager;
 
     // Cosmetic Settings/Toggles
-    private final ArrayList<HiddenReason> hiddenReason = new ArrayList<>();
-    private final HashMap<CosmeticSlot, Color> colors = new HashMap<>();
+    private final List<HiddenReason> hiddenReason = new CopyOnWriteArrayList<>();
+    private final Map<CosmeticSlot, Color> colors = new ConcurrentHashMap<>();
 
     @Getter @Setter
     @ApiStatus.Internal
@@ -368,7 +370,10 @@ public class CosmeticUser implements CosmeticHolder {
 
         final Entity entity = this.getEntity();
         if(!items.isEmpty() && entity != null) {
-            NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(entity.getEntityId(), items).sendPacket(HMCCPacketManager.getViewers(entity.getLocation()));
+            HMCCPacketManager.sendPacket(
+                    NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(entity.getEntityId(), items),
+                    HMCCPacketManager.getViewers(entity.getLocation())
+            );
             MessagesUtil.sendDebugMessages("updateCosmetic (All) - end - " + items.size());
         }
     }
@@ -590,7 +595,7 @@ public class CosmeticUser implements CosmeticHolder {
         org.bukkit.entity.Entity entity = getEntity();
 
         UserBalloonManager userBalloonManager1 = new UserBalloonManager(this, entity.getLocation());
-        userBalloonManager1.getModelEntity().teleport(entity.getLocation().add(cosmeticBalloonType.getBalloonOffset()));
+        HMCCScheduler.teleportAsync(userBalloonManager1.getModelEntity(), entity.getLocation().clone().add(cosmeticBalloonType.getBalloonOffset()));
 
         userBalloonManager1.spawnModel(cosmeticBalloonType, getCosmeticColor(cosmeticBalloonType.getSlot()));
         userBalloonManager1.addPlayerToModel(this, cosmeticBalloonType, getCosmeticColor(cosmeticBalloonType.getSlot()));
@@ -682,8 +687,8 @@ public class CosmeticUser implements CosmeticHolder {
         Player player = getPlayer();
         if (player == null) return;
         for (final Player p : Bukkit.getOnlinePlayers()) {
-            p.hidePlayer(HMCCosmeticsPlugin.getInstance(), player);
-            player.hidePlayer(HMCCosmeticsPlugin.getInstance(), p);
+            HMCCScheduler.runEntity(p, () -> p.hidePlayer(HMCCosmeticsPlugin.getInstance(), player));
+            HMCCScheduler.runEntity(player, () -> player.hidePlayer(HMCCosmeticsPlugin.getInstance(), p));
         }
     }
 
@@ -691,8 +696,8 @@ public class CosmeticUser implements CosmeticHolder {
         Player player = getPlayer();
         if (player == null) return;
         for (final Player p : Bukkit.getOnlinePlayers()) {
-            p.showPlayer(HMCCosmeticsPlugin.getInstance(), player);
-            player.showPlayer(HMCCosmeticsPlugin.getInstance(), p);
+            HMCCScheduler.runEntity(p, () -> p.showPlayer(HMCCosmeticsPlugin.getInstance(), player));
+            HMCCScheduler.runEntity(player, () -> player.showPlayer(HMCCosmeticsPlugin.getInstance(), p));
         }
     }
 

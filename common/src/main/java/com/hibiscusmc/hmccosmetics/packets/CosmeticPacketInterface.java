@@ -10,6 +10,7 @@ import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
 import com.hibiscusmc.hmccosmetics.user.manager.UserBackpackManager;
 import com.hibiscusmc.hmccosmetics.user.manager.UserWardrobeManager;
+import com.hibiscusmc.hmccosmetics.listener.PlayerMovementListener;
 import com.hibiscusmc.hmccosmetics.util.HMCCInventoryUtils;
 import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
@@ -172,6 +173,12 @@ public class CosmeticPacketInterface implements PacketInterface {
             }
         }
 
+        return PacketAction.NOTHING;
+    }
+
+    @Override
+    public @NotNull PacketAction readPlayerPosition(@NotNull Player player, @NotNull PlayerPositionWrapper wrapper) {
+        PlayerMovementListener.handlePositionPacket(player, wrapper);
         return PacketAction.NOTHING;
     }
 

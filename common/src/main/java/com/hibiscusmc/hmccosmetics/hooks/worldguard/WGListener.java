@@ -17,7 +17,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
@@ -62,11 +61,9 @@ public class WGListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer());
+    public static void handleTeleport(@NotNull Player player, @NotNull Location location) {
+        CosmeticUser user = CosmeticUsers.getUser(player);
         if (user == null) return;
-        Location location = event.getTo();
         ApplicableRegionSet set = getRegions(location);
         if (user.isHidden()) {
             if (set.getRegions().isEmpty()) {
@@ -85,12 +82,13 @@ public class WGListener implements Listener {
             if (protectedRegion.getFlags().containsKey(WGHook.getCosmeticWardrobeFlag())) {
                 if (!WardrobeSettings.getWardrobeNames().contains(protectedRegion.getFlags().get(WGHook.getCosmeticWardrobeFlag()).toString())) return;
                 Wardrobe wardrobe = WardrobeSettings.getWardrobe(protectedRegion.getFlags().get(WGHook.getCosmeticWardrobeFlag()).toString());
+                if (wardrobe == null) return;
                 user.enterWardrobe(wardrobe, true);
             }
         }
     }
 
-    private ApplicableRegionSet getRegions(Location location) {
+    private static ApplicableRegionSet getRegions(Location location) {
         com.sk89q.worldedit.util.Location loc = BukkitAdapter.adapt(location);
         RegionContainer region = WorldGuard.getInstance().getPlatform().getRegionContainer();
         RegionQuery query = region.createQuery();

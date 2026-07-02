@@ -12,8 +12,9 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public class Settings {
@@ -108,7 +109,7 @@ public class Settings {
     private static boolean nexoChangeReload;
     @Getter
     private static boolean worldGuardMoveCheck;
-    private static final HashMap<EquipmentSlot, SlotOptionConfig> slotOptions = new HashMap<>();
+    private static final Map<EquipmentSlot, SlotOptionConfig> slotOptions = new ConcurrentHashMap<>();
     @Getter
     private static boolean destroyLooseCosmetics;
     @Getter

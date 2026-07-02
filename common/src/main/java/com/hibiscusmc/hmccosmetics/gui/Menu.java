@@ -41,6 +41,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -58,7 +59,7 @@ public class Menu {
     private final ConfigurationNode config;
     @Getter
     private final String permissionNode;
-    private final HashMap<Integer, List<MenuItem>> items;
+    private final Map<Integer, List<MenuItem>> items;
     @Getter
     private final int refreshRate;
 
@@ -72,7 +73,7 @@ public class Menu {
         permissionNode = config.node("permission").getString("");
         refreshRate = config.node("refresh-rate").getInt(-1);
 
-        items = new HashMap<>();
+        items = new ConcurrentHashMap<>();
         setupItems();
 
         Menus.addMenu(this);

@@ -81,11 +81,10 @@ public class PlayerGameListener implements Listener {
         user.leaveWardrobe(false);
     }
 
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onPlayerTeleport(PlayerTeleportEvent event) {
-        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer().getUniqueId());
+    public static void handleTeleport(Player player, Location location, boolean unloadedChunk, boolean changedWorld) {
+        CosmeticUser user = CosmeticUsers.getUser(player.getUniqueId());
 
-        MessagesUtil.sendDebugMessages("Player Teleport Event");
+        MessagesUtil.sendDebugMessages("Player Teleport Packet");
         if (user == null) {
             MessagesUtil.sendDebugMessages("user is null");
             return;
@@ -95,47 +94,26 @@ public class PlayerGameListener implements Listener {
             user.leaveWardrobe(false);
         }
 
-        HMCCScheduler.runEntityLater(event.getPlayer(), () -> {
+        if (changedWorld && unloadedChunk && user.hasCosmeticInSlot(CosmeticSlot.BALLOON)) {
+            user.despawnBalloon();
+        }
+
+        HMCCScheduler.runEntityLater(player, () -> {
             if (user.getEntity() == null || user.isInWardrobe()) return; // fixes disconnecting when in wardrobe (the entity stuff)
 
-            if (Settings.getDisabledWorlds().contains(user.getEntity().getLocation().getWorld().getName())) {
+            if (Settings.getDisabledWorlds().contains(location.getWorld().getName())) {
                 user.hideCosmetics(CosmeticUser.HiddenReason.WORLD);
             } else {
                 user.showCosmetics(CosmeticUser.HiddenReason.WORLD);
             }
 
+            if (!unloadedChunk) return;
+
             user.respawnBackpack();
             user.respawnBalloon();
-            user.updateCosmetic();
+            user.updateCosmetic(CosmeticSlot.BACKPACK);
+            user.updateCosmetic(CosmeticSlot.BALLOON);
         }, 4);
-
-        if (event.getCause().equals(PlayerTeleportEvent.TeleportCause.NETHER_PORTAL) || event.getCause().equals(PlayerTeleportEvent.TeleportCause.END_PORTAL)) return;
-    }
-
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onPortalTeleport(PlayerPortalEvent event) {
-        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer().getUniqueId());
-
-        MessagesUtil.sendDebugMessages("Player Teleport Event");
-        if (user == null) {
-            MessagesUtil.sendDebugMessages("user is null");
-            return;
-        }
-
-        if (Settings.getDisabledWorlds().contains(user.getEntity().getLocation().getWorld().getName())) {
-            user.hideCosmetics(CosmeticUser.HiddenReason.WORLD);
-        } else {
-            user.showCosmetics(CosmeticUser.HiddenReason.WORLD);
-        }
-
-        if (user.hasCosmeticInSlot(CosmeticSlot.BALLOON)) {
-            user.despawnBalloon();
-
-            HMCCScheduler.runEntityLater(event.getPlayer(), () -> {
-                user.spawnBalloon((CosmeticBalloonType) user.getCosmetic(CosmeticSlot.BALLOON));
-                user.updateCosmetic();
-            }, 4);
-        }
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -338,7 +316,7 @@ public class PlayerGameListener implements Listener {
             user.getBalloonManager().getPufferfish().spawnPufferfish(npclocation.clone().add(cosmetic.getBalloonOffset()), viewer);
             HMCCPacketManager.sendLeashPacket(user.getBalloonManager().getPufferfishBalloonId(), user.getWardrobeManager().getNPC_ID(), viewer);
             HMCCPacketManager.sendTeleportPacket(user.getBalloonManager().getPufferfishBalloonId(), npclocation, false, viewer);
-            user.getBalloonManager().getModelEntity().teleport(npclocation);
+            user.getBalloonManager().setLocation(npclocation);
         }
     }
 

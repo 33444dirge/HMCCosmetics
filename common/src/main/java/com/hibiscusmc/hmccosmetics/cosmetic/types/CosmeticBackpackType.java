@@ -11,7 +11,6 @@ import com.hibiscusmc.hmccosmetics.util.packets.HMCCPacketManager;
 import lombok.Getter;
 import me.lojosho.hibiscuscommons.nms.NMSHandlers;
 import me.lojosho.hibiscuscommons.nms.NMSPacketBuilder;
-import me.lojosho.hibiscuscommons.packets.wrapper.PacketWrapper;
 import me.lojosho.shaded.configurate.ConfigurationNode;
 import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
@@ -67,7 +66,7 @@ public class CosmeticBackpackType extends Cosmetic implements CosmeticUpdateBeha
         List<Player> newViewers = entityManager.refreshViewers(loc);
         NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
 
-        final ArrayList<PacketWrapper> newViewerBundle = new ArrayList<>();
+        final ArrayList<Object> newViewerBundle = new ArrayList<>();
 
         if(!newViewers.isEmpty()) {
             newViewerBundle.addAll(HMCCPacketManager.getInvisibleArmorStand(firstArmorStandId, entityLocation, UUID.randomUUID()));
@@ -78,7 +77,7 @@ public class CosmeticBackpackType extends Cosmetic implements CosmeticUpdateBeha
                 if (scaleAttribute != null) {
                     newViewerBundle.add(packetBuilder.buildEntityAttributePacket(user.getUserBackpackManager().getFirstArmorStandId(), Attribute.SCALE, scaleAttribute.getValue()));
                     /*
-                    ArrayList<Integer> particleCloud = backpackManager.getAreaEffectEntityId();
+                    List<Integer> particleCloud = backpackManager.getAreaEffectEntityId();
                     for (int i : particleCloud) {
                         wrapper.add(packetBuilder.buildEntityAttributePacket(i, Attribute.SCALE, scaleAttribute.getValue()));
                     }
@@ -102,9 +101,9 @@ public class CosmeticBackpackType extends Cosmetic implements CosmeticUpdateBeha
         }
 
         if (isFirstPersonCompadible() && !user.isInWardrobe() && user.getPlayer() != null) {
-            final ArrayList<PacketWrapper> ownerBundle = new ArrayList<>();
+            final ArrayList<Object> ownerBundle = new ArrayList<>();
 
-            ArrayList<Integer> particleCloud = backpackManager.getAreaEffectEntityId();
+            List<Integer> particleCloud = backpackManager.getAreaEffectEntityId();
             for (int i = 0; i < particleCloud.size(); i++) {
                 if (i == 0) {
                     ownerBundle.add(packetBuilder.buildEntityMountPacket(entity.getEntityId(), new int[]{particleCloud.get(i)}));

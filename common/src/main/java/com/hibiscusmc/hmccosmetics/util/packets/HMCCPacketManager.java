@@ -10,7 +10,6 @@ import it.unimi.dsi.fastutil.ints.IntList;
 import me.lojosho.hibiscuscommons.nms.MinecraftVersion;
 import me.lojosho.hibiscuscommons.nms.NMSHandlers;
 import me.lojosho.hibiscuscommons.nms.NMSPacketBuilder;
-import me.lojosho.hibiscuscommons.packets.wrapper.PacketWrapper;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.attribute.Attribute;
@@ -29,6 +28,10 @@ public class HMCCPacketManager {
     private static final Map<Integer, Number> GENERIC_INVISIBLE_DATA_VALUES = Map.of(0, (byte) 0x20);
     private static final List<CosmeticSlot> EQUIPMENT_SLOTS = List.of(CosmeticSlot.HELMET, CosmeticSlot.CHESTPLATE, CosmeticSlot.LEGGINGS, CosmeticSlot.BOOTS, CosmeticSlot.MAINHAND, CosmeticSlot.OFFHAND);
 
+    public static void sendPacket(Object packet, List<Player> sendTo) {
+        NMSHandlers.getHandler().getPacketSender().sendPacket(packet, sendTo);
+    }
+
     public static void sendEntitySpawnPacket(
             final @NotNull Location location,
             final int entityId,
@@ -36,7 +39,7 @@ public class HMCCPacketManager {
             final UUID uuid,
             final @NotNull List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntitySpawnPacket(entityId, uuid, entityType, location).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntitySpawnPacket(entityId, uuid, entityType, location), sendTo);
     }
 
     public static void equipmentSlotUpdate(
@@ -50,7 +53,7 @@ public class HMCCPacketManager {
             if (empty) item = new ItemStack(Material.AIR);
             items.put(slot, item);
         }
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(player.getEntityId(), items).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(player.getEntityId(), items), sendTo);
     }
 
     public static void equipmentSlotUpdate(
@@ -60,7 +63,7 @@ public class HMCCPacketManager {
             List<Player> sendTo
     ) {
         if (!EQUIPMENT_SLOTS.contains(cosmeticSlot)) return;
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(entityId, Map.of(HMCCInventoryUtils.getEquipmentSlot(cosmeticSlot), user.getUserCosmeticItem(cosmeticSlot))).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(entityId, Map.of(HMCCInventoryUtils.getEquipmentSlot(cosmeticSlot), user.getUserCosmeticItem(cosmeticSlot))), sendTo);
     }
 
     public static void equipmentSlotUpdate(
@@ -69,14 +72,14 @@ public class HMCCPacketManager {
             ItemStack itemStack,
             List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(entityId, Map.of(equipmentSlot, itemStack)).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityEquipmentSlotUpdatePacket(entityId, Map.of(equipmentSlot, itemStack)), sendTo);
     }
 
     public static void sendInvisibilityPacket(
             int entityId,
             List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(entityId, Map.of(0, (byte) 0x20)).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(entityId, Map.of(0, (byte) 0x20)), sendTo);
     }
 
     public static void spawnInvisibleEntity(
@@ -87,31 +90,31 @@ public class HMCCPacketManager {
             List<Player> sendTo
     ) {
         NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
-        List<PacketWrapper> packets = new ArrayList<>();
+        List<Object> packets = new ArrayList<>();
         packets.add(packetBuilder.buildEntitySpawnPacket(entityId, uuid, entityType, location));
         packets.add(packetBuilder.buildEntityMetadataPacket(entityId, GENERIC_INVISIBLE_DATA_VALUES));
         NMSHandlers.getHandler().getPacketSender().sendBundle(packets, sendTo);
     }
 
-    public static List<PacketWrapper> getCloudHandleEffect(
+    public static List<Object> getCloudHandleEffect(
             int entityId,
             Location location,
             UUID uuid
     ) {
         NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
-        List<PacketWrapper> packets = new ArrayList<>();
+        List<Object> packets = new ArrayList<>();
         packets.add(packetBuilder.buildEntitySpawnPacket(entityId, uuid, EntityType.AREA_EFFECT_CLOUD, location));
         packets.add(packetBuilder.buildEntityMetadataPacket(entityId, CLOUD_EFFECT_INVISIBLE_DATA_VALUES));
         return packets;
     }
 
-    public static List<PacketWrapper> getInvisibleArmorStand(
+    public static List<Object> getInvisibleArmorStand(
             int entityId,
             Location location,
             UUID uuid
     ) {
         NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
-        List<PacketWrapper> packets = new ArrayList<>();
+        List<Object> packets = new ArrayList<>();
         packets.add(packetBuilder.buildEntitySpawnPacket(entityId, uuid, EntityType.ARMOR_STAND, location));
         packets.add(packetBuilder.buildEntityMetadataPacket(entityId, getInvisibleArmorStandData()));
         return packets;
@@ -128,7 +131,7 @@ public class HMCCPacketManager {
             List<Player> sendTo
     ) {
         Map<Integer, Number> dataValues = getInvisibleArmorStandData();
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(entityId, dataValues).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(entityId, dataValues), sendTo);
     }
 
     public static Map<Integer, Number> getInvisibleArmorStandData() {
@@ -153,7 +156,7 @@ public class HMCCPacketManager {
             boolean onGround,
             @NotNull List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityRotatePacket(entityId, location.getYaw(), location.getPitch(), onGround).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityRotatePacket(entityId, location.getYaw(), location.getPitch(), onGround), sendTo);
     }
 
     public static void sendRotationPacket(
@@ -162,11 +165,11 @@ public class HMCCPacketManager {
             boolean onGround,
             @NotNull List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityRotatePacket(entityId, yaw, 0, onGround).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityRotatePacket(entityId, yaw, 0, onGround), sendTo);
     }
 
     public static void sendTeleportPacket(int entityId, Location location, boolean onGround, List<Player> sendTo) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityTeleportPacket(
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityTeleportPacket(
                 entityId,
                 location.x(),
                 location.y(),
@@ -174,7 +177,7 @@ public class HMCCPacketManager {
                 location.getYaw(),
                 location.getPitch(),
                 onGround
-        ).sendPacket(sendTo);
+        ), sendTo);
     }
 
     /**
@@ -201,7 +204,7 @@ public class HMCCPacketManager {
             final int[] passengerIds,
             final @NotNull List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityMountPacket(mountId, passengerIds).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityMountPacket(mountId, passengerIds), sendTo);
     }
 
     /**
@@ -231,7 +234,7 @@ public class HMCCPacketManager {
             final String npcName,
             final List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildPlayerInfoAddPacket(skinnedPlayer, entityId, uuid, npcName).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildPlayerInfoAddPacket(skinnedPlayer, entityId, uuid, npcName), sendTo);
     }
 
     /**
@@ -244,8 +247,8 @@ public class HMCCPacketManager {
             final @NotNull List<Player> sendTo
     ) {
         // https://minecraft.wiki/w/Java_Edition_protocol/Entity_metadata#Avatar
-        if (NMSHandlers.getVersion().isLowerOrEqual(MinecraftVersion.v1_21_8)) NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(playerId, getPlayerOverlayMetaData()).sendPacket(sendTo);
-        else NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(playerId, getPlayerOverlayMetaData()).sendPacket(sendTo);
+        if (NMSHandlers.getVersion().isLowerOrEqual(MinecraftVersion.v1_21_8)) sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(playerId, getPlayerOverlayMetaData()), sendTo);
+        else sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityMetadataPacket(playerId, getPlayerOverlayMetaData()), sendTo);
     }
 
     public static Map<Integer, Number> getPlayerOverlayMetaData() {
@@ -266,7 +269,7 @@ public class HMCCPacketManager {
             final UUID uuid,
             final List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildPlayerInfoRemovePacket(List.of(uuid)).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildPlayerInfoRemovePacket(List.of(uuid)), sendTo);
     }
 
     public static void sendLeashPacket(
@@ -274,7 +277,7 @@ public class HMCCPacketManager {
             final int entityId,
             final Location location
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityLeashPacket(leashedEntity, entityId).sendPacket(getViewers(location));
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityLeashPacket(leashedEntity, entityId), getViewers(location));
     }
 
     public static void sendLeashPacket(
@@ -282,7 +285,7 @@ public class HMCCPacketManager {
             final int entityId,
             final List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityLeashPacket(leashedEntity, entityId).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityLeashPacket(leashedEntity, entityId), sendTo);
     }
 
     /**
@@ -300,7 +303,7 @@ public class HMCCPacketManager {
             final boolean onGround,
             @NotNull List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityMovePacket(entityId, from, to, onGround).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityMovePacket(entityId, from, to, onGround), sendTo);
     }
 
     public static void sendEntityScalePacket(
@@ -308,19 +311,19 @@ public class HMCCPacketManager {
         double scale,
         List<Player> sendTo
     ) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityAttributePacket(entityId, Attribute.SCALE, scale).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityAttributePacket(entityId, Attribute.SCALE, scale), sendTo);
     }
 
     public static void sendEntityDestroyPacket(int entityId, List<Player> sendTo) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityDestroyPacket(IntList.of(entityId)).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityDestroyPacket(IntList.of(entityId)), sendTo);
     }
 
     public static void sendEntityDestroyPacket(List<Integer> entities, List<Player> sendTo) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityDestroyPacket(new IntArrayList(entities)).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityDestroyPacket(new IntArrayList(entities)), sendTo);
     }
 
     public static void sendRotateHeadPacket(int entityId, Location location, List<Player> sendTo) {
-        NMSHandlers.getHandler().getPacketBuilder().buildEntityRotateHeadPacket(entityId, location.getYaw()).sendPacket(sendTo);
+        sendPacket(NMSHandlers.getHandler().getPacketBuilder().buildEntityRotateHeadPacket(entityId, location.getYaw()), sendTo);
     }
 
     /*

@@ -88,7 +88,7 @@ allprojects {
         compileOnly("io.github.toxicity188:BetterCommand:1.3") //BetterCommand library
         //compileOnly("it.unimi.dsi:fastutil:8.5.14")
         compileOnly("org.projectlombok:lombok:1.18.34")
-        compileOnly("me.lojosho:HibiscusCommons:0.9.2")
+        compileOnly(files(rootProject.file("../HibiscusCommons/output/HibiscusCommons-0.9.2.jar")))
 
         annotationProcessor("org.projectlombok:lombok:1.18.36")
         testCompileOnly("org.projectlombok:lombok:1.18.36")
@@ -172,6 +172,7 @@ tasks {
 bukkit {
     load = BukkitPluginDescription.PluginLoadOrder.POSTWORLD
     main = "com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin"
+    foliaSupported = true
     apiVersion = "1.20"
     authors = listOf("LoJoSho")
     depend = listOf("HibiscusCommons")

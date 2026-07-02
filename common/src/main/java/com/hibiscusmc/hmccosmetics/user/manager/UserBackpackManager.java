@@ -8,7 +8,6 @@ import com.hibiscusmc.hmccosmetics.util.packets.HMCCPacketManager;
 import lombok.Getter;
 import me.lojosho.hibiscuscommons.nms.NMSHandlers;
 import me.lojosho.hibiscuscommons.nms.NMSPacketBuilder;
-import me.lojosho.hibiscuscommons.packets.wrapper.PacketWrapper;
 import me.lojosho.hibiscuscommons.util.ServerUtils;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -24,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class UserBackpackManager {
 
@@ -31,7 +31,7 @@ public class UserBackpackManager {
     private boolean backpackHidden;
     @Getter
     private final int invisibleArmorStand;
-    private ArrayList<Integer> particleCloud = new ArrayList<>();
+    private List<Integer> particleCloud = new CopyOnWriteArrayList<>();
     @Getter
     private final CosmeticUser user;
     @Getter
@@ -64,8 +64,8 @@ public class UserBackpackManager {
 
         NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
 
-        final List<PacketWrapper> outsideBundle = new ArrayList<>(16);
-        final List<PacketWrapper> ownerBundle = new ArrayList<>(16);
+        final List<Object> outsideBundle = new ArrayList<>(16);
+        final List<Object> ownerBundle = new ArrayList<>(16);
 
         outsideBundle.addAll(HMCCPacketManager.getInvisibleArmorStand(getFirstArmorStandId(), location, UUID.randomUUID()));
 
@@ -123,7 +123,7 @@ public class UserBackpackManager {
             for (Integer entityId : particleCloud) {
                 HMCCPacketManager.sendEntityDestroyPacket(entityId, getEntityManager().getViewers());
             }
-            this.particleCloud = null;
+            this.particleCloud = new CopyOnWriteArrayList<>();
         }
     }
 
@@ -145,7 +145,7 @@ public class UserBackpackManager {
         backpackHidden = shown;
     }
 
-    public ArrayList<Integer> getAreaEffectEntityId() {
+    public List<Integer> getAreaEffectEntityId() {
         return particleCloud;
     }
 

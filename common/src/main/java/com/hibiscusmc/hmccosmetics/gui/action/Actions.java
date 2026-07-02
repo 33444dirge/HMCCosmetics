@@ -8,14 +8,15 @@ import org.apache.commons.lang3.StringUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 @SuppressWarnings("unused")
 public class Actions {
 
-    private static final HashMap<String, Action> actions = new HashMap<>();
+    private static final Map<String, Action> actions = new ConcurrentHashMap<>();
 
     // [ID]
     private static final ActionMessage ACTION_MESSAGE = new ActionMessage();
