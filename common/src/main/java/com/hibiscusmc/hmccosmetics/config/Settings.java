@@ -72,6 +72,7 @@ public class Settings {
     private static final String LOCKED_COSMETIC_COLOR_PATH = "locked-cosmetic-color";
     private static final String ENABLED_PATH = "enabled";
     private static final String SLOT_OPTIONS_PATH = "slot-options";
+    private static final String EQUIPMENT_NAME_FORMAT_PATH = "equipment-name-format";
     private static final String BACKPACK_PREVENT_DARKNESS_PATH = "backpack-prevent-darkness";
     private static final String BETTER_HUD_PATH = "betterhud";
     private static final String BETTER_HUD_HIDE_IN_WARDROBE_PATH = "wardrobe-hide";
@@ -184,6 +185,8 @@ public class Settings {
     private static boolean dyeMenuEnabled;
     @Getter
     private static PlayerSearchManager.SearchEngine engine;
+    @Getter
+    private static String equipmentNameFormat;
 
     public static void load(ConfigurationNode source) {
 
@@ -223,6 +226,7 @@ public class Settings {
         backpackForceRidingEnabled = cosmeticSettings.node(COSMETIC_BACKPACK_FORCE_RIDING_PACKET_PATH).getBoolean(false);
         backpackInterceptPassengerPacket = cosmeticSettings.node(COSMETIC_BACKPACK_INTERCEPT_PASSENGER_PACKET_PATH).getBoolean(true);
         preventOffhandSwapping = cosmeticSettings.node(COSMETIC_OFFHAND_PREVENT_SWAPPING).getBoolean(false);
+        equipmentNameFormat = cosmeticSettings.node(EQUIPMENT_NAME_FORMAT_PATH).getString("<gray><equipment_name>");
 
         cosmeticSettings.node(SLOT_OPTIONS_PATH).childrenMap().forEach((key, value) -> {
             EquipmentSlot slot = convertConfigToEquipment(key.toString().toLowerCase());
@@ -233,8 +237,17 @@ public class Settings {
             boolean addEnchantments = value.node("add-enchantments").getBoolean(false);
             boolean requireEmpty = value.node("require-empty").getBoolean(false);
             boolean addElytraComponent = value.node("add-elytra-componnt").getBoolean(true);
+            boolean equipmentNamePassThrough = value.node("passthrough-name").getBoolean(true);
+            boolean equipmentLorePassThrough = value.node("passthrough-lore").getBoolean(true);
+            boolean equipmentAttributesPassThrough = value.node("passthrough-attributes").getBoolean(true);
             boolean attemptDamagePassthrough = value.node("passthrough-damage").getBoolean(true);
-            slotOptions.put(slot, new SlotOptionConfig(slot, addEnchantments, requireEmpty, addElytraComponent, attemptDamagePassthrough));
+            boolean equipmentExtraPassThrough = value.node("passthrough-extra").getBoolean(false);
+            List<String> equipmentExtraComponents = new ArrayList<>();
+            value.node("passthrough-extra-components").childrenList().forEach(component -> {
+                String componentName = component.getString();
+                if (componentName != null) equipmentExtraComponents.add(componentName);
+            });
+            slotOptions.put(slot, new SlotOptionConfig(slot, addEnchantments, requireEmpty, addElytraComponent, equipmentNamePassThrough, equipmentLorePassThrough, equipmentAttributesPassThrough, attemptDamagePassthrough, equipmentExtraPassThrough, equipmentExtraComponents));
         });
 
         tickPeriod = cosmeticSettings.node(TICK_PERIOD_PATH).getInt(-1);
@@ -307,7 +320,7 @@ public class Settings {
     }
 
     public static SlotOptionConfig getSlotOption(EquipmentSlot slot) {
-        if (!slotOptions.containsKey(slot)) slotOptions.put(slot, new SlotOptionConfig(slot, false, false, false, false));
+        if (!slotOptions.containsKey(slot)) slotOptions.put(slot, new SlotOptionConfig(slot, false, false, false, true, true, true, true, false, List.of()));
         return slotOptions.get(slot);
     }
 

@@ -394,7 +394,8 @@ public class CosmeticUser implements CosmeticHolder {
             return getPlayer().getInventory().getItem(HMCCInventoryUtils.getEquipmentSlot(cosmetic.getSlot()));
         }
         if (cosmetic instanceof CosmeticArmorType armorType) {
-            item = armorType.getItem(this, cosmetic.getItem());
+            item = getUserCosmeticItem(cosmetic, cosmetic.getItem());
+            return armorType.getItem(this, item);
         }
         if (cosmetic instanceof CosmeticBackpackType) {
             item = cosmetic.getItem();

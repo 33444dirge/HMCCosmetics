@@ -2,14 +2,17 @@ package com.hibiscusmc.hmccosmetics.listener;
 
 import com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin;
 import com.hibiscusmc.hmccosmetics.config.Settings;
+import com.hibiscusmc.hmccosmetics.util.HMCCServerUtils;
 import me.lojosho.hibiscuscommons.api.events.HibiscusHookReload;
 import me.lojosho.hibiscuscommons.api.events.HibiscusHooksAllActiveEvent;
 import me.lojosho.hibiscuscommons.hooks.Hook;
 import me.lojosho.hibiscuscommons.hooks.items.HookItemAdder;
 import me.lojosho.hibiscuscommons.hooks.items.HookNexo;
+import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
 
 public class ServerListener implements Listener {
@@ -36,5 +39,12 @@ public class ServerListener implements Listener {
     @EventHandler(priority = EventPriority.NORMAL)
     public void onAllHooksReady(@NotNull HibiscusHooksAllActiveEvent event) {
         HMCCosmeticsPlugin.setup();
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCosmeticEntitySpawn(@NotNull EntitySpawnEvent event) {
+        if (!event.isCancelled()) return;
+        if (!event.getEntity().getPersistentDataContainer().has(HMCCServerUtils.getCosmemeticMobKey(), PersistentDataType.BOOLEAN)) return;
+        event.setCancelled(false);
     }
 }

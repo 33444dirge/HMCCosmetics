@@ -61,31 +61,71 @@ cosmetic-settings:
   # Intercepts packets to attempt to reorder them to properly handle the backpack
   backpack-intercept-passenger-packets: false
 
+  # MiniMessage format for the equipped item name inserted into cosmetic lore.
+  # <equipment_name> uses the equipped item's custom name, or a client-translated item name when it has no custom name.
+  equipment-name-format: "<gray><equipment_name>"
+
   slot-options:
     helmet:
       # If the plugin should keep enchants on helmets. This is useful as some enchantments are client side only.
       add-enchantments: false
       # Should the player slot be empty for the cosmetic to be applied? A cosmetic will be "hidden" if a player has an item equipped in the slot
       require-empty: false
-      passthrough-damage: false
+      # Adds the equipped item's name as the first line of the cosmetic lore
+      passthrough-name: true
+      # Adds the equipped item's lore before the cosmetic lore
+      passthrough-lore: true
+      # Adds the equipped item's attributes to the cosmetic without removing cosmetic attributes
+      passthrough-attributes: true
+      # Adds the equipped item's durability component to the cosmetic
+      passthrough-damage: true
+      # Copies extra data components from the equipped item to the cosmetic
+      passthrough-extra: true
+      # Component names can be like "repair_cost" or "minecraft:repair_cost"
+      passthrough-extra-components:
+        - "repair_cost"
     chestplate:
       add-enchantments: false
       require-empty: false
       add-elytra-componnt: true
-      passthrough-damage: false
+      passthrough-name: true
+      passthrough-lore: true
+      passthrough-attributes: true
+      passthrough-damage: true
+      passthrough-extra: true
+      passthrough-extra-components:
+        - "repair_cost"
     leggings:
       add-enchantments: false
       require-empty: false
-      passthrough-damage: false
+      passthrough-name: true
+      passthrough-lore: true
+      passthrough-attributes: true
+      passthrough-damage: true
+      passthrough-extra: true
+      passthrough-extra-components:
+        - "repair_cost"
     boots:
       add-enchantments: false
       require-empty: false
-      passthrough-damage: false
+      passthrough-name: true
+      passthrough-lore: true
+      passthrough-attributes: true
+      passthrough-damage: true
+      passthrough-extra: true
+      passthrough-extra-components:
+        - "repair_cost"
     offhand:
       add-enchantments: false
       # There is a small visual blip for a tick when you put a new item in the offhand slot, hence why its enabled by default.
       require-empty: true
-      passthrough-damage: false
+      passthrough-name: true
+      passthrough-lore: true
+      passthrough-attributes: true
+      passthrough-damage: true
+      passthrough-extra: true
+      passthrough-extra-components:
+        - "repair_cost"
 
   # This attempts to destroy cosmetics that get loose in the wild, such as through a player entering creative mode.
   # Most servers who don't use creative mode and have properly set up the plugin should have no need for this and can leave it disabled.

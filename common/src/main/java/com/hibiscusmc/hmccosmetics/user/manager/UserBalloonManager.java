@@ -22,6 +22,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
@@ -47,7 +48,7 @@ public class UserBalloonManager {
     public UserBalloonManager(CosmeticUser user, @NotNull Location location) {
         this.user = user;
         this.pufferfish = new UserBalloonPufferfish(user.getUniqueId(), NMSHandlers.getHandler().getUtilHandler().getNextEntityId(location.getWorld()), UUID.randomUUID());
-        this.modelEntity = location.getWorld().spawn(location, ArmorStand.class, (e) -> {
+        this.modelEntity = location.getWorld().spawn(location, ArmorStand.class, CreatureSpawnEvent.SpawnReason.CUSTOM, false, (e) -> {
             e.setInvisible(true);
             e.setGravity(false);
             e.setSilent(true);
