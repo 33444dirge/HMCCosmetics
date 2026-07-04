@@ -46,11 +46,14 @@ public class PlayerMovementListener implements Listener {
             return;
         }
 
+        PlayerGameListener.handleBackpackPose(player, player.getPose());
+
         if(!updateDirtyLocation(ev.getPlayer(), ev.getTo())) {
             return;
         }
 
         for(final CosmeticSlot slot : MOVEMENT_COSMETICS) {
+            if (slot == CosmeticSlot.BACKPACK && user.isHidingBackpackPose()) continue;
             user.updateMovementCosmetic(slot, ev.getFrom(), ev.getTo());
         }
     }
@@ -66,6 +69,8 @@ public class PlayerMovementListener implements Listener {
 
             HMCCosmeticsPlugin.getInstance().getPlayerSearchManager().handlePlayerPosition(player);
             Location location = new Location(world, next.x(), next.y(), next.z(), next.yaw(), 0);
+            if (PlayerGameListener.shouldIgnoreWardrobeTeleport(player, location)) return;
+
             if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null && Settings.isWorldGuardMoveCheck()) {
                 WGListener.handleTeleport(player, location);
             }

@@ -54,6 +54,8 @@ import java.util.logging.Level;
 public class CosmeticUser implements CosmeticHolder {
     @Getter
     private final UUID uniqueId;
+    @Getter
+    private volatile int entityId = -1;
     private HMCCScheduler.TaskHandle tickTask;
     private final Map<CosmeticSlot, Cosmetic> playerCosmetics = new ConcurrentHashMap<>();
     private UserWardrobeManager userWardrobeManager;
@@ -309,6 +311,7 @@ public class CosmeticUser implements CosmeticHolder {
 
     @Override
     public boolean updateCosmetic(@NotNull CosmeticSlot slot) {
+        if (slot == null) return false;
         final Cosmetic cosmetic = playerCosmetics.get(slot);
         if(cosmetic == null) {
             return false;
@@ -571,8 +574,14 @@ public class CosmeticUser implements CosmeticHolder {
 
     public void spawnBackpack(CosmeticBackpackType cosmeticBackpackType) {
         if (this.userBackpackManager != null) return;
+        if (this.hidingBackpackPose) return;
+        if (!cosmeticBackpackType.isScaleCompatible(this)) return;
         this.userBackpackManager = new UserBackpackManager(this);
         userBackpackManager.spawnBackpack(cosmeticBackpackType);
+    }
+
+    public void refreshEntityId(@NotNull Player player) {
+        this.entityId = player.getEntityId();
     }
 
     public void despawnBackpack() {
@@ -595,7 +604,7 @@ public class CosmeticUser implements CosmeticHolder {
         org.bukkit.entity.Entity entity = getEntity();
 
         UserBalloonManager userBalloonManager1 = new UserBalloonManager(this, entity.getLocation());
-        HMCCScheduler.teleportAsync(userBalloonManager1.getModelEntity(), entity.getLocation().clone().add(cosmeticBalloonType.getBalloonOffset()));
+        HMCCScheduler.teleportAsync(userBalloonManager1.getModelEntity(), entity.getLocation().clone().add(cosmeticBalloonType.getScaledBalloonOffset(this)));
 
         userBalloonManager1.spawnModel(cosmeticBalloonType, getCosmeticColor(cosmeticBalloonType.getSlot()));
         userBalloonManager1.addPlayerToModel(this, cosmeticBalloonType, getCosmeticColor(cosmeticBalloonType.getSlot()));
@@ -751,9 +760,11 @@ public class CosmeticUser implements CosmeticHolder {
         }
         if (hasCosmeticInSlot(CosmeticSlot.BACKPACK)) {
             if (!isBackpackSpawned()) respawnBackpack();
-            CosmeticBackpackType cosmeticBackpackType = (CosmeticBackpackType) getCosmetic(CosmeticSlot.BACKPACK);
-            ItemStack item = getUserCosmeticItem(cosmeticBackpackType);
-            userBackpackManager.setItem(item);
+            if (userBackpackManager != null) {
+                CosmeticBackpackType cosmeticBackpackType = (CosmeticBackpackType) getCosmetic(CosmeticSlot.BACKPACK);
+                ItemStack item = getUserCosmeticItem(cosmeticBackpackType);
+                userBackpackManager.setItem(item);
+            }
         }
         updateCosmetic();
         MessagesUtil.sendDebugMessages("ShowCosmetics");

@@ -161,8 +161,20 @@ hook-settings:
     # Will ignore any violations in Vulcan if a player is within a wardrobe
     exempt-checks-in-wardrobe: false
 wardrobe:
-  # how much yaw should change per tick, set to 0 for none
+  # How the wardrobe NPC rotates. automatic rotates by itself, manual lets the player control it with hotbar slots and swap-hand.
+  rotation-mode: automatic
+  # How much yaw should change per tick in automatic mode or per hotbar key press in manual mode. Set to 0 for none.
   rotation-speed: 3
+  # How much pitch should change per swap-hand key press. Works in both automatic and manual rotation modes.
+  pitch-step: 3
+  # Sound options for player controlled wardrobe rotation.
+  manual-rotation:
+    # Sound played when the wardrobe NPC is rotated. Leave empty to disable.
+    sound: "minecraft:ui.button.click"
+    # Bukkit SoundCategory used for the rotation sound.
+    sound-type: "MASTER"
+    sound-volume: 1.0
+    sound-pitch: 1.0
   # Applies a pumpkin for an overlay of the player while in the wardrobe.
   equip-pumpkin: false
   # Rather than having a set exit location, this will send the player back to where they entered the wardrobe. Not recommended for WG regions

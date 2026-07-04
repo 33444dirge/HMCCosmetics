@@ -1,9 +1,5 @@
 package com.hibiscusmc.hmccosmetics.user;
 
-import com.hibiscusmc.hmccosmetics.util.HMCCServerUtils;
-import org.bukkit.Bukkit;
-import org.bukkit.World;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -70,11 +66,10 @@ public class CosmeticUsers {
      */
     @Nullable
     public static CosmeticUser getUser(int entityId) {
-        for (World world : Bukkit.getWorlds()) {
-            if (HMCCServerUtils.getEntity(entityId, world) instanceof Player player)
-                return COSMETIC_USERS.get(player.getUniqueId());
-        }
-        return null;
+        return COSMETIC_USERS.values().stream()
+                .filter(user -> user.getEntityId() == entityId)
+                .findFirst()
+                .orElse(null);
     }
 
     /**

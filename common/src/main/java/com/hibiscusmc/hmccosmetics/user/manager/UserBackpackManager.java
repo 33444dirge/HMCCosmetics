@@ -89,7 +89,7 @@ public class UserBackpackManager {
         passengerIDs[passengerIDs.length - 1] = this.getFirstArmorStandId();
 
         if (cosmeticBackpackType.isFirstPersonCompadible()) {
-            for (int i = particleCloud.size(); i < cosmeticBackpackType.getHeight(); i++) {
+            for (int i = particleCloud.size(); i < cosmeticBackpackType.getScaledHeight(user); i++) {
                 int entityId = ServerUtils.getNextEntityId(location.getWorld());
                 ownerBundle.addAll(HMCCPacketManager.getCloudHandleEffect(entityId, location, UUID.randomUUID()));
                 //if (scaleValue != 1) ownerBundle.add(packetBuilder.buildEntityAttributePacket(entityId, Attribute.SCALE, scaleValue)); // Todo: figure out how to impl scaling, area clouds can not scale and will kick the player if sent
@@ -113,15 +113,19 @@ public class UserBackpackManager {
     }
 
     public void despawnBackpack() {
+        List<Player> viewers = new ArrayList<>(getEntityManager().getViewers());
+        Player owner = user.getPlayer();
+        if (owner != null && !viewers.contains(owner)) viewers.add(owner);
+
         int[] existingPassengers = user.getEntity().getPassengers().stream()
                 .mapToInt(Entity::getEntityId)
                 .toArray();
-        if (existingPassengers.length > 0) HMCCPacketManager.sendRidingPacket(user.getEntity().getEntityId(), existingPassengers, getEntityManager().getViewers());
+        if (existingPassengers.length > 0) HMCCPacketManager.sendRidingPacket(user.getEntity().getEntityId(), existingPassengers, viewers);
 
-        HMCCPacketManager.sendEntityDestroyPacket(invisibleArmorStand, getEntityManager().getViewers());
+        HMCCPacketManager.sendEntityDestroyPacket(invisibleArmorStand, viewers);
         if (particleCloud != null) {
             for (Integer entityId : particleCloud) {
-                HMCCPacketManager.sendEntityDestroyPacket(entityId, getEntityManager().getViewers());
+                HMCCPacketManager.sendEntityDestroyPacket(entityId, viewers);
             }
             this.particleCloud = new CopyOnWriteArrayList<>();
         }

@@ -40,6 +40,8 @@ public class UserBalloonManager {
     @Getter
     private UserBalloonPufferfish pufferfish;
     private final ArmorStand modelEntity;
+    private final int modelId;
+    private final UUID modelUniqueId;
     private volatile Location location;
 
     public UserBalloonManager(CosmeticUser user, @NotNull Location location) {
@@ -56,6 +58,8 @@ public class UserBalloonManager {
             e.setAI(false);
             e.getPersistentDataContainer().set(HMCCServerUtils.getCosmemeticMobKey(), PersistentDataType.BOOLEAN, true);
         });
+        this.modelId = this.modelEntity.getEntityId();
+        this.modelUniqueId = this.modelEntity.getUniqueId();
         this.location = location.clone();
     }
 
@@ -178,11 +182,11 @@ public class UserBalloonManager {
     }
 
     public UUID getModelUnqiueId() {
-        return getModelEntity().getUniqueId();
+        return modelUniqueId;
     }
 
     public int getModelId() {
-        return getModelEntity().getEntityId();
+        return modelId;
     }
 
     public Location getLocation() {
@@ -213,6 +217,12 @@ public class UserBalloonManager {
     public void sendLeashPacket(int entityId) {
         if (cosmeticBalloonType.isShowLead()) {
             HMCCPacketManager.sendLeashPacket(getPufferfishBalloonId(), entityId, getLocation());
+        }
+    }
+
+    public void sendLeashPacket(int entityId, List<Player> viewer) {
+        if (cosmeticBalloonType.isShowLead()) {
+            HMCCPacketManager.sendLeashPacket(getPufferfishBalloonId(), entityId, viewer);
         }
     }
 

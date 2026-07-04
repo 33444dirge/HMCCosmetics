@@ -14,6 +14,7 @@ import net.kyori.adventure.bossbar.BossBar;
 import org.apache.commons.lang3.EnumUtils;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.SoundCategory;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jetbrains.annotations.NotNull;
 
@@ -34,6 +35,13 @@ public class WardrobeSettings {
     private static final String PORTABLE_PATH = "portable";
     private static final String ALWAYS_DISPLAY_PATH = "always-display";
     private static final String ROTATION_SPEED_PATH = "rotation-speed";
+    private static final String ROTATION_MODE_PATH = "rotation-mode";
+    private static final String PITCH_STEP_PATH = "pitch-step";
+    private static final String MANUAL_ROTATION_PATH = "manual-rotation";
+    private static final String MANUAL_ROTATION_SOUND_PATH = "sound";
+    private static final String MANUAL_ROTATION_SOUND_VOLUME_PATH = "sound-volume";
+    private static final String MANUAL_ROTATION_SOUND_PITCH_PATH = "sound-pitch";
+    private static final String MANUAL_ROTATION_SOUND_TYPE_PATH = "sound-type";
     private static final String SPAWN_DELAY_PATH = "spawn-delay";
     private static final String DESPAWN_DELAY_PATH = "despawn-delay";
     private static final String APPLY_COSMETICS_ON_CLOSE = "apply-cosmetics-on-close";
@@ -81,6 +89,18 @@ public class WardrobeSettings {
     private static boolean alwaysDisplay;
     @Getter
     private static int rotationSpeed;
+    @Getter
+    private static RotationMode rotationMode;
+    @Getter
+    private static int pitchStep;
+    @Getter
+    private static String manualRotationSound;
+    @Getter
+    private static float manualRotationSoundVolume;
+    @Getter
+    private static float manualRotationSoundPitch;
+    @Getter
+    private static SoundCategory manualRotationSoundType;
     @Getter
     private static int spawnDelay;
     @Getter
@@ -134,6 +154,15 @@ public class WardrobeSettings {
         portable = source.node(PORTABLE_PATH).getBoolean();
         alwaysDisplay = source.node(ALWAYS_DISPLAY_PATH).getBoolean();
         rotationSpeed = source.node(ROTATION_SPEED_PATH).getInt();
+        rotationMode = RotationMode.fromString(source.node(ROTATION_MODE_PATH).getString("automatic"));
+        pitchStep = source.node(PITCH_STEP_PATH).getInt(rotationSpeed);
+        ConfigurationNode manualRotationNode = source.node(MANUAL_ROTATION_PATH);
+        manualRotationSound = manualRotationNode.node(MANUAL_ROTATION_SOUND_PATH).getString("");
+        manualRotationSoundVolume = manualRotationNode.node(MANUAL_ROTATION_SOUND_VOLUME_PATH).getFloat(1.0f);
+        manualRotationSoundPitch = manualRotationNode.node(MANUAL_ROTATION_SOUND_PITCH_PATH).getFloat(1.0f);
+        String soundType = manualRotationNode.node(MANUAL_ROTATION_SOUND_TYPE_PATH).getString("MASTER");
+        if (soundType != null) soundType = soundType.toUpperCase();
+        manualRotationSoundType = EnumUtils.isValidEnum(SoundCategory.class, soundType) ? SoundCategory.valueOf(soundType) : SoundCategory.MASTER;
         spawnDelay = source.node(SPAWN_DELAY_PATH).getInt();
         despawnDelay = source.node(DESPAWN_DELAY_PATH).getInt();
         applyCosmeticsOnClose = source.node(APPLY_COSMETICS_ON_CLOSE).getBoolean();
@@ -206,7 +235,6 @@ public class WardrobeSettings {
             Location viewerLocation = LocationSerializer.INSTANCE.deserialize(Location.class, wardrobesNode.node(VIEWER_LOCATION_PATH));
             MessagesUtil.sendDebugMessages("Viewer Location: " + viewerLocation);
             Location leaveLocation = LocationSerializer.INSTANCE.deserialize(Location.class, wardrobesNode.node(LEAVE_LOCATION_PATH));
-            if (leaveLocation == null) leaveLocation = viewerLocation;
             MessagesUtil.sendDebugMessages("Leave Location: " + leaveLocation);
             WardrobeLocation wardrobeLocation = new WardrobeLocation(npcLocation, viewerLocation, leaveLocation);
 
@@ -300,6 +328,12 @@ public class WardrobeSettings {
         }
         YamlConfiguration config = YamlConfiguration.loadConfiguration(wardrobeFile);
 
+        if (newLocation == null) {
+            config.set(wardrobe.getId() + ".leave-location", null);
+            saveConfig(config, wardrobeFile);
+            return;
+        }
+
         config.set(wardrobe.getId() + ".leave-location.world", newLocation.getWorld().getName());
         config.set(wardrobe.getId() + ".leave-location.x", newLocation.getX());
         config.set(wardrobe.getId() + ".leave-location.y", newLocation.getY());
@@ -362,5 +396,16 @@ public class WardrobeSettings {
 
     public static @NotNull File getWardrobeDefaultFile() {
         return new File(HMCCosmeticsPlugin.getInstance().getDataFolder() + "/wardrobes/defaultwardrobe.yml");
+    }
+
+    public enum RotationMode {
+        AUTOMATIC,
+        MANUAL;
+
+        public static RotationMode fromString(String value) {
+            if (value == null) return AUTOMATIC;
+            String mode = value.toUpperCase();
+            return EnumUtils.isValidEnum(RotationMode.class, mode) ? RotationMode.valueOf(mode) : AUTOMATIC;
+        }
     }
 }

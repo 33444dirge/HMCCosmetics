@@ -134,6 +134,9 @@ public class CosmeticCommandTabComplete implements TabCompleter {
                     completions.add("#FFFFFF");
                 }
                 case "setwardrobesetting" -> {
+                    if (args[2].equalsIgnoreCase("leavelocation")) {
+                        completions.add("-none");
+                    }
                     if (args[2].equalsIgnoreCase("defaultmenu")) {
                         completions.addAll(Menus.getMenuNames());
                     }

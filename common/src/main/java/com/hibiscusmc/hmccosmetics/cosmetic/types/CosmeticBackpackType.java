@@ -43,6 +43,10 @@ public class CosmeticBackpackType extends Cosmetic implements CosmeticUpdateBeha
     @Override
     public void dispatchUpdate(@NotNull CosmeticUser user) {
         if (user.isInWardrobe()) return;
+        if (!isScaleCompatible(user)) {
+            user.despawnBackpack();
+            return;
+        }
 
         Entity entity = user.getEntity();
         if(entity == null) {
@@ -147,6 +151,29 @@ public class CosmeticBackpackType extends Cosmetic implements CosmeticUpdateBeha
 
     public boolean isFirstPersonCompadible() {
         return firstPersonBackpack != null;
+    }
+
+    public boolean isScaleCompatible(@NotNull CosmeticUser user) {
+        if (!isFirstPersonCompadible()) return true;
+
+        Entity entity = user.getEntity();
+        if (!(entity instanceof Player player)) return true;
+
+        AttributeInstance scale = player.getAttribute(Attribute.SCALE);
+        if (scale == null) return true;
+
+        double cloudSteps = scale.getValue() * 5.0;
+        return Math.abs(cloudSteps - Math.rint(cloudSteps)) < 1.0E-6;
+    }
+
+    public int getScaledHeight(@NotNull CosmeticUser user) {
+        if (height <= 0) return height;
+        Entity entity = user.getEntity();
+        if (!(entity instanceof Player player)) return height;
+
+        AttributeInstance scale = player.getAttribute(Attribute.SCALE);
+        if (scale == null) return height;
+        return Math.max(1, (int) Math.ceil(height * scale.getValue()));
     }
 
 }

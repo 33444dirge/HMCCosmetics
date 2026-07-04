@@ -15,7 +15,7 @@ public class WardrobeLocation {
     private Location leaveLocation;
 
     /**
-     * This creates a WardrobeLocation object with the 3 locations that are required for a wardrobe to work
+     * This creates a WardrobeLocation object with the locations required for a wardrobe to work
      * @param npcLocation The location of the NPC
      * @param viewerLocation The location of the viewer
      * @param leaveLocation The location that the player will be teleported to when they leave the wardrobe if return-last-location in the config is false
@@ -27,10 +27,10 @@ public class WardrobeLocation {
     }
 
     /**
-     * Checks if any of the locations are null
-     * @return true if all locations are not null, else false
+     * Checks if the required locations are set
+     * @return true if the NPC and viewer locations are not null, else false
      */
     public boolean hasAllLocations() {
-        return npcLocation != null && viewerLocation != null && leaveLocation != null;
+        return npcLocation != null && viewerLocation != null;
     }
 }

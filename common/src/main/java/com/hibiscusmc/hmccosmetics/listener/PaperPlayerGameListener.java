@@ -1,6 +1,5 @@
 package com.hibiscusmc.hmccosmetics.listener;
 
-import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
@@ -20,18 +19,12 @@ public class PaperPlayerGameListener implements Listener {
         CosmeticUser user = CosmeticUsers.getUser(player);
         if (user == null || user.isInWardrobe()) return;
 
-        for (EquipmentSlot slot : event.getEquipmentChanges().keySet())
-            user.updateCosmetic(equipmentSlotToCosmeticType(slot));
+        for (EquipmentSlot slot : event.getEquipmentChanges().keySet()) {
+            CosmeticSlot cosmeticSlot = equipmentSlotToCosmeticType(slot);
+            if (cosmeticSlot != null) user.updateCosmetic(cosmeticSlot);
+        }
 
         HMCCScheduler.runEntityLater(player, player::updateInventory, 2);
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onPlayerRespawn(PlayerPostRespawnEvent event) {
-        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer());
-        if (user == null) return;
-        if (user.isInWardrobe()) return;
-        if (user.hasCosmeticInSlot(CosmeticSlot.BACKPACK)) user.respawnBackpack();
     }
 
     private CosmeticSlot equipmentSlotToCosmeticType(EquipmentSlot equipmentSlot) {

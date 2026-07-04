@@ -50,8 +50,9 @@ public class PlayerConnectionListener implements Listener {
             if (!player.isOnline()) return;
             HMCCScheduler.runEntity(player, () -> {
                 CosmeticUser cosmeticUser = CosmeticUsers.getProvider()
-                    .createCosmeticUser(playerId)
-                    .initialize(userData);
+                    .createCosmeticUser(playerId);
+                cosmeticUser.refreshEntityId(player);
+                cosmeticUser.initialize(userData);
                 cosmeticUser.startTicking();
 
                 CosmeticUsers.addUser(cosmeticUser);

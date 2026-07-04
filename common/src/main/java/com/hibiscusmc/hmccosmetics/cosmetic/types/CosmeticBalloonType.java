@@ -13,6 +13,8 @@ import me.lojosho.shaded.configurate.ConfigurationNode;
 import me.lojosho.shaded.configurate.serialize.SerializationException;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
@@ -55,6 +57,16 @@ public class CosmeticBalloonType extends Cosmetic implements CosmeticUpdateBehav
         this.modelName = modelId;
     }
 
+    public Vector getScaledBalloonOffset(@NotNull CosmeticUser user) {
+        Vector offset = getBalloonOffset().clone();
+        Entity entity = user.getEntity();
+        if (!(entity instanceof Player player)) return offset;
+
+        AttributeInstance scale = player.getAttribute(Attribute.SCALE);
+        if (scale == null) return offset;
+        return offset.multiply(scale.getValue());
+    }
+
     @Override
     public void dispatchUpdate(@NotNull CosmeticUser user) {
         Entity entity = Bukkit.getEntity(user.getUniqueId());
@@ -69,13 +81,14 @@ public class CosmeticBalloonType extends Cosmetic implements CosmeticUpdateBehav
         }
 
         Location newLocation = entity.getLocation();
-        newLocation = newLocation.clone().add(getBalloonOffset());
+        newLocation = newLocation.clone().add(getScaledBalloonOffset(user));
         if (Settings.isBalloonHeadForward()) newLocation.setPitch(0);
 
         if (!user.isHidden() && showLead) {
             List<Player> sendTo = userBalloonManager.getPufferfish().refreshViewers(newLocation);
             if (sendTo.isEmpty()) return;
             user.getBalloonManager().getPufferfish().spawnPufferfish(newLocation, sendTo);
+            sendScalePackets(user, userBalloonManager, sendTo);
             HMCCPacketManager.sendLeashPacket(userBalloonManager.getPufferfishBalloonId(), entity.getEntityId(), sendTo);
         }
     }
@@ -94,7 +107,7 @@ public class CosmeticBalloonType extends Cosmetic implements CosmeticUpdateBehav
 
         Location newLocation = entity.getLocation();
         Location currentLocation = user.getBalloonManager().getLocation();
-        newLocation = newLocation.clone().add(getBalloonOffset());
+        newLocation = newLocation.clone().add(getScaledBalloonOffset(user));
         if (Settings.isBalloonHeadForward()) newLocation.setPitch(0);
 
         List<Player> viewers = HMCCPacketManager.getViewers(entity.getLocation());
@@ -113,7 +126,18 @@ public class CosmeticBalloonType extends Cosmetic implements CosmeticUpdateBehav
         MessagesUtil.sendDebugMessages("Balloon location set to " + newLocation);
 
         HMCCPacketManager.sendTeleportPacket(userBalloonManager.getPufferfishBalloonId(), newLocation, false, viewers);
+        sendScalePackets(user, userBalloonManager, viewers);
         HMCCPacketManager.sendLeashPacket(userBalloonManager.getPufferfishBalloonId(), entity.getEntityId(), viewers);
+    }
+
+    private void sendScalePackets(@NotNull CosmeticUser user, @NotNull UserBalloonManager userBalloonManager, @NotNull List<Player> viewers) {
+        Entity entity = user.getEntity();
+        if (!(entity instanceof Player player)) return;
+
+        AttributeInstance scale = player.getAttribute(Attribute.SCALE);
+        if (scale == null) return;
+        HMCCPacketManager.sendEntityScalePacket(userBalloonManager.getPufferfishBalloonId(), scale.getValue(), viewers);
+        HMCCPacketManager.sendEntityScalePacket(userBalloonManager.getModelId(), scale.getValue(), viewers);
     }
 
     public boolean isDyeablePart(String name) {

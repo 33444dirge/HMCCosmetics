@@ -18,15 +18,16 @@ import com.hibiscusmc.hmccosmetics.util.packets.HMCCPacketManager;
 import me.lojosho.hibiscuscommons.packets.PacketAction;
 import me.lojosho.hibiscuscommons.packets.PacketInterface;
 import me.lojosho.hibiscuscommons.packets.data.*;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CosmeticPacketInterface implements PacketInterface {
+    private static final Set<UUID> SCALE_REFRESHING = ConcurrentHashMap.newKeySet();
 
     @Override
     public @NotNull PacketAction writeContainerContent(@NotNull Player player, @NotNull ContainerContentWrapper wrapper) {
@@ -91,9 +92,9 @@ public class CosmeticPacketInterface implements PacketInterface {
 
     @Override
     public @NotNull PacketAction writeEquipmentContent(@NotNull Player player, @NotNull EntityEquipmentWrapper wrapper) {
-        if (player.getEntityId() != wrapper.getEntityId()) return PacketAction.NOTHING;
         CosmeticUser user = CosmeticUsers.getUser(player);
-        if (user == null || user.isInWardrobe()) return PacketAction.NOTHING;
+        if (user == null || user.getEntityId() != wrapper.getEntityId()) return PacketAction.NOTHING;
+        if (user.isInWardrobe()) return PacketAction.NOTHING;
         Map<EquipmentSlot, ItemStack> armor = wrapper.getArmor();
 
         for (Map.Entry<EquipmentSlot, ItemStack> armorSlot : armor.entrySet()) {
@@ -133,9 +134,9 @@ public class CosmeticPacketInterface implements PacketInterface {
 
         int ownerId = wrapper.getOwner();
 
-        Optional<CosmeticUser> optionalCosmeticUser = CosmeticUsers.values().stream().filter(user -> user.getPlayer() != null).filter(user -> ownerId == user.getPlayer().getEntityId()).findFirst();
-        if (optionalCosmeticUser.isEmpty()) return PacketAction.NOTHING;
-        CosmeticUser user = optionalCosmeticUser.get();
+        CosmeticUser user = CosmeticUsers.getUser(ownerId);
+        if (user == null) return PacketAction.NOTHING;
+        if (user.isHidingBackpackPose()) return PacketAction.NOTHING;
 
         Cosmetic backpackCosmetic = user.getCosmetic(CosmeticSlot.BACKPACK);
         if (backpackCosmetic == null) return PacketAction.NOTHING;
@@ -157,13 +158,7 @@ public class CosmeticPacketInterface implements PacketInterface {
     @Override
     public PacketAction readPlayerScale(@NotNull Player player, @NotNull PlayerScaleWrapper wrapper) {
         int entityId = wrapper.getEntityId();
-        Player changedPlayer = Bukkit.getOnlinePlayers().stream()
-            .filter(onlinePlayer -> onlinePlayer.getEntityId() == entityId)
-            .findFirst()
-            .orElse(null);
-        if (changedPlayer == null) return PacketAction.NOTHING;
-
-        CosmeticUser cosmeticUser = CosmeticUsers.getUser(changedPlayer.getUniqueId());
+        CosmeticUser cosmeticUser = CosmeticUsers.getUser(entityId);
         if (cosmeticUser == null || cosmeticUser.isInWardrobe()) return PacketAction.NOTHING;
 
         UserBackpackManager backpack = cosmeticUser.getUserBackpackManager();
@@ -172,6 +167,27 @@ public class CosmeticPacketInterface implements PacketInterface {
                 HMCCPacketManager.sendEntityScalePacket(cosmeticId, wrapper.getScale(), Collections.singletonList(player));
             }
         }
+        if (cosmeticUser.isBalloonSpawned()) {
+            HMCCPacketManager.sendEntityScalePacket(cosmeticUser.getBalloonManager().getPufferfishBalloonId(), wrapper.getScale(), Collections.singletonList(player));
+            HMCCPacketManager.sendEntityScalePacket(cosmeticUser.getBalloonManager().getModelId(), wrapper.getScale(), Collections.singletonList(player));
+        }
+        if (SCALE_REFRESHING.add(cosmeticUser.getUniqueId())) {
+            Player changedPlayer = cosmeticUser.getPlayer();
+            if (changedPlayer == null) {
+                SCALE_REFRESHING.remove(cosmeticUser.getUniqueId());
+                return PacketAction.NOTHING;
+            }
+            HMCCScheduler.runEntityLater(changedPlayer, () -> {
+                try {
+                    CosmeticUser user = CosmeticUsers.getUser(cosmeticUser.getUniqueId());
+                    if (user == null || user.isInWardrobe()) return;
+                    if (user.hasCosmeticInSlot(CosmeticSlot.BACKPACK)) user.respawnBackpack();
+                    if (user.hasCosmeticInSlot(CosmeticSlot.BALLOON)) user.respawnBalloon();
+                } finally {
+                    SCALE_REFRESHING.remove(cosmeticUser.getUniqueId());
+                }
+            }, 1);
+        }
 
         return PacketAction.NOTHING;
     }
@@ -179,6 +195,16 @@ public class CosmeticPacketInterface implements PacketInterface {
     @Override
     public @NotNull PacketAction readPlayerPosition(@NotNull Player player, @NotNull PlayerPositionWrapper wrapper) {
         PlayerMovementListener.handlePositionPacket(player, wrapper);
+        return PacketAction.NOTHING;
+    }
+
+    @Override
+    public @NotNull PacketAction readPlayerRespawn(@NotNull Player player) {
+        HMCCScheduler.runEntityLater(player, () -> {
+            CosmeticUser user = CosmeticUsers.getUser(player);
+            if (user == null || user.isInWardrobe()) return;
+            if (user.hasCosmeticInSlot(CosmeticSlot.BACKPACK)) user.respawnBackpack();
+        }, 4);
         return PacketAction.NOTHING;
     }
 
@@ -202,7 +228,6 @@ public class CosmeticPacketInterface implements PacketInterface {
     public @NotNull PacketAction readPlayerAction(@NotNull Player player, @NotNull PlayerActionWrapper wrapper) {
         if (!Settings.isPreventOffhandSwapping()) return PacketAction.NOTHING;
         String actionType = wrapper.getActionType();
-        MessagesUtil.sendDebugMessages("EntityStatus Initial " + player.getEntityId() + " - " + actionType);
         // If it's not SWAP_ITEM_WITH_OFFHAND, ignore
         if (!actionType.equalsIgnoreCase("SWAP_ITEM_WITH_OFFHAND")) return PacketAction.NOTHING;
 
@@ -211,6 +236,7 @@ public class CosmeticPacketInterface implements PacketInterface {
             MessagesUtil.sendDebugMessages("EntityStatus User is null");
             return PacketAction.NOTHING;
         }
+        MessagesUtil.sendDebugMessages("EntityStatus Initial " + user.getEntityId() + " - " + actionType);
         if (!user.hasCosmeticInSlot(CosmeticSlot.OFFHAND)) return PacketAction.NOTHING;
         return PacketAction.CANCELLED;
     }
