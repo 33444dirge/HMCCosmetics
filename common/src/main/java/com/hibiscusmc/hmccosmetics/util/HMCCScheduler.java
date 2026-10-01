@@ -57,13 +57,38 @@ public final class HMCCScheduler {
     }
 
     public static TaskHandle runEntityLater(@NotNull Entity entity, @NotNull Runnable task, long delayTicks) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (plugin.isDisabled()) return runEntityWhileDisabled(entity, task);
         if (!HibiscusCommonsPlugin.isOnFolia()) {
             return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, task, delayTicks));
         }
         ScheduledTask scheduledTask = entity.getScheduler().runDelayed(plugin, ignored -> task.run(), null, delayTicks);
         if (scheduledTask == null) return NOOP_TASK;
         return new PaperTaskHandle(scheduledTask);
+    }
+
+    /**
+     * Bukkit and Folia refuse new tasks from a disabled plugin, but entity cleanup (balloon removal,
+     * closing menus) still runs while disabling, both on server stop and on a PlugManX unload/reload.
+     * Run it right away when this thread owns the entity, otherwise hand it to HibiscusCommons, which stays enabled.
+     */
+    private static TaskHandle runEntityWhileDisabled(@NotNull Entity entity, @NotNull Runnable task) {
+        if (ownsEntity(entity)) {
+            task.run();
+            return NOOP_TASK;
+        }
+        Plugin commons = HibiscusCommonsPlugin.getInstance();
+        if (commons == null || !commons.isEnabled()) return NOOP_TASK;
+        ScheduledTask scheduledTask = entity.getScheduler().run(commons, ignored -> task.run(), null);
+        if (scheduledTask == null) return NOOP_TASK;
+        return new PaperTaskHandle(scheduledTask);
+    }
+
+    /**
+     * @return true if the current thread may touch the entity directly. Always true outside Folia.
+     */
+    public static boolean ownsEntity(@NotNull Entity entity) {
+        return !HibiscusCommonsPlugin.isOnFolia() || Bukkit.isOwnedByCurrentRegion(entity);
     }
 
     public static TaskHandle runEntityTimer(@NotNull Entity entity, @NotNull Runnable task, long delayTicks, long periodTicks) {

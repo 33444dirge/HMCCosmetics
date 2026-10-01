@@ -64,4 +64,8 @@ public class Database {
     public static void clearData(UUID uniqueId) {
         data.clear(uniqueId);
     }
+
+    public static void close() {
+        if (data != null) data.close();
+    }
 }

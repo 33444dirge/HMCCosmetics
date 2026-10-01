@@ -27,6 +27,13 @@ public abstract class Data {
 
     public abstract void clear(UUID uniqueId);
 
+    /**
+     * Releases the connection when the plugin is disabled, so a PlugManX reload doesn't leave it open.
+     */
+    public void close() {
+        // Override
+    }
+
     // BACKPACK=colorfulbackpack&RRGGBB,HELMET=niftyhat,BALLOON=colorfulballoon,CHESTPLATE=niftychestplate
     @NotNull
     public final String serializeData(@NotNull CosmeticUser user) {

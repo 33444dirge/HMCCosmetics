@@ -3,6 +3,7 @@ package com.hibiscusmc.hmccosmetics.listener;
 import com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin;
 import com.hibiscusmc.hmccosmetics.config.Settings;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
+import com.hibiscusmc.hmccosmetics.hooks.worldguard.WGHook;
 import com.hibiscusmc.hmccosmetics.hooks.worldguard.WGListener;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
@@ -68,7 +69,7 @@ public class PlayerMovementListener implements Listener {
             Location location = new Location(world, next.x(), next.y(), next.z(), next.yaw(), wrapper.getPitch());
             if (PlayerGameListener.shouldIgnoreWardrobeTeleport(player, location)) return;
 
-            if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null && Settings.isWorldGuardMoveCheck()) {
+            if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null && Settings.isWorldGuardMoveCheck() && WGHook.isHooked()) {
                 WGListener.handleTeleport(player, location);
             }
 

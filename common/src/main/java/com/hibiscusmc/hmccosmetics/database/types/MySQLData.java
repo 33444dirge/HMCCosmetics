@@ -90,15 +90,19 @@ public class MySQLData extends SQLData {
         }
     }
 
+    @Override
     public void close() {
-        HMCCScheduler.runAsync(() -> {
+        Runnable run = () -> {
             try {
                 if (connection == null) throw new IllegalStateException("Connection is null");
                 connection.close();
-            } catch (SQLException | NullPointerException e) {
+            } catch (SQLException | NullPointerException | IllegalStateException e) {
                 System.out.println(e.getMessage());
             }
-        });
+        };
+        // A disabled plugin can't schedule tasks, so close directly while shutting down
+        if (HMCCosmeticsPlugin.getInstance().isDisabled()) run.run();
+        else HMCCScheduler.runAsync(run);
     }
 
     @NotNull

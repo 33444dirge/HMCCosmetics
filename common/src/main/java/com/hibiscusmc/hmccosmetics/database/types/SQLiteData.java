@@ -57,6 +57,15 @@ public class SQLiteData extends SQLData {
         });
     }
 
+    @Override
+    public void close() {
+        try {
+            if (connection != null && !connection.isClosed()) connection.close();
+        } catch (SQLException e) {
+            MessagesUtil.sendDebugMessages("Unable to close the SQLite connection: " + e.getMessage(), Level.WARNING);
+        }
+    }
+
     private void openConnection() throws SQLException {
         if (connection != null && !connection.isClosed()) return;
 

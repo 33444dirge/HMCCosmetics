@@ -26,14 +26,18 @@ import com.hibiscusmc.hmccosmetics.listener.*;
 import com.hibiscusmc.hmccosmetics.packets.CosmeticPacketInterface;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
+import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
+import com.hibiscusmc.hmccosmetics.util.search.OctreePlayerSearchEngine;
 import com.hibiscusmc.hmccosmetics.util.search.PlayerSearchManager;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import com.hibiscusmc.hmccosmetics.util.TranslationUtil;
+import dev.triumphteam.gui.guis.BaseGui;
 import lombok.Getter;
 import me.lojosho.hibiscuscommons.HibiscusCommonsPlugin;
 import me.lojosho.hibiscuscommons.HibiscusPlugin;
 import me.lojosho.hibiscuscommons.config.serializer.ItemSerializer;
 import me.lojosho.hibiscuscommons.config.serializer.LocationSerializer;
+import me.lojosho.hibiscuscommons.hooks.Hook;
 import me.lojosho.hibiscuscommons.hooks.Hooks;
 import me.lojosho.shaded.configupdater.common.config.CommentedConfiguration;
 import me.lojosho.shaded.configurate.CommentedConfigurationNode;
@@ -45,6 +49,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.permissions.Permission;
 
@@ -58,12 +63,18 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
 
     @Getter
     private PlayerSearchManager playerSearchManager;
+    private HMCPlaceholderExpansion placeholderExpansion;
+
+    private final Hook hmcCosmeticsHook;
+    private final Hook betterHudHook;
+    private final Hook vulcanHook;
 
     public HMCCosmeticsPlugin() {
         super(13873, 1879);
-        new HookHMCCosmetics();
-        new HookBetterHud();
-        new HookVulcan();
+        // Hooks.addHook replaces by id, so a PlugManX reload swaps these for the new classloader's copies
+        hmcCosmeticsHook = new HookHMCCosmetics();
+        betterHudHook = new HookBetterHud();
+        vulcanHook = new HookVulcan();
     }
 
     @Override
@@ -104,7 +115,10 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
         }
 
         // Move this over to Hibiscus Commons later
-        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) new HMCPlaceholderExpansion().register();
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            placeholderExpansion = new HMCPlaceholderExpansion();
+            placeholderExpansion.register();
+        }
 
         // Setup
         setup();
@@ -155,8 +169,33 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
 
         // WorldGuard
         if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null && Settings.isWorldGuardMoveCheck()) {
-            getServer().getPluginManager().registerEvents(new WGListener(), this);
+            if (WGHook.isHooked()) {
+                getServer().getPluginManager().registerEvents(new WGListener(), this);
+            } else {
+                getLogger().warning("WorldGuard flags are unavailable (WorldGuard only accepts new flags while the server starts). Restart the server to enable the HMCCosmetics region flags.");
+            }
         }
+
+        // PlugManX (re)load: HibiscusCommons only registers hook listeners during its own startup, so hooks
+        // created by this load were never picked up. Register them under this plugin so they go away on disable.
+        for (Hook hook : ownHooks()) {
+            if (hook.isDetected() || Bukkit.getPluginManager().getPlugin(hook.getId()) == null) continue;
+            getServer().getPluginManager().registerEvents(hook, this);
+            hook.setDetected(true);
+            hook.load();
+        }
+
+        // PlayerJoinEvent has already passed for anyone online during a PlugManX (re)load.
+        // On a normal startup nobody is online yet, so this does nothing.
+        PlayerConnectionListener connectionListener = new PlayerConnectionListener();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (playerSearchManager.getEngine() instanceof OctreePlayerSearchEngine octree) octree.addPlayer(player);
+            connectionListener.loadOnlinePlayer(player);
+        }
+    }
+
+    private Hook[] ownHooks() {
+        return new Hook[]{hmcCosmeticsHook, betterHudHook, vulcanHook};
     }
 
     @Override
@@ -170,13 +209,46 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
     @Override
     public void onEnd() {
         // Plugin shutdown logic
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            CosmeticUser user = CosmeticUsers.getUser(player);
-            if (user == null) continue;
-            if (user.isInWardrobe()) {
-                user.leaveWardrobe(true);
+        for (CosmeticUser user : CosmeticUsers.values()) {
+            final Player player = user.getPlayer();
+            Runnable cleanup = () -> {
+                // Menus belong to this plugin's classloader; after a PlugManX unload their click handlers would be gone
+                if (player != null && player.getOpenInventory().getTopInventory().getHolder(false) instanceof BaseGui) {
+                    player.closeInventory();
+                }
+                if (user.isInWardrobe()) {
+                    user.leaveWardrobe(true);
+                }
+                // Cancels the tick task and removes the balloon/backpack entities, otherwise a PlugManX
+                // reload leaves them behind and the new load spawns a second set
+                user.destroy();
+            };
+
+            if (player == null) {
+                cleanup.run();
+            } else if (HMCCScheduler.ownsEntity(player)) {
+                cleanup.run();
+                Database.save(user);
+            } else {
+                // Folia, player is on another region: save now while the connection is still open,
+                // then let the player's own region do the entity cleanup
+                Database.save(user);
+                HMCCScheduler.runEntityLater(player, cleanup, 1);
             }
-            Database.save(user);
+            CosmeticUsers.removeUser(user.getUniqueId());
+        }
+        Database.close();
+
+        if (placeholderExpansion != null && placeholderExpansion.isRegistered()) placeholderExpansion.unregister();
+        placeholderExpansion = null;
+
+        // On a normal startup HibiscusCommons registers these hooks under its own name, so disabling
+        // HMCCosmetics doesn't remove them. Left behind, they'd keep running code from the unloaded jar.
+        // Inactive also stops Hooks.getItem("HMCCosmetics:...") from calling into the unloaded jar until a reload replaces it
+        for (Hook hook : ownHooks()) {
+            HandlerList.unregisterAll(hook);
+            hook.setDetected(false);
+            hook.setActive(false);
         }
     }
 

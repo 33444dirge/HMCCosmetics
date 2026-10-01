@@ -28,26 +28,36 @@ public class WGHook {
 
     public WGHook() {
         FlagRegistry registry = WorldGuard.getInstance().getFlagRegistry();
-        try {
-            StateFlag cosmeticFlag = new StateFlag("cosmetic-enable", false);
-            StateFlag emoteFlag = new StateFlag("emotes-enable", false);
-            StringFlag wardrobeFlag = new StringFlag("cosmetic-wardrobe");
-            registry.register(cosmeticFlag);
-            registry.register(emoteFlag);
-            registry.register(wardrobeFlag);
-            COSMETIC_ENABLE_FLAG = cosmeticFlag;
-            EMOTES_ENABLE_FLAG = emoteFlag;
-            COSMETIC_WARDROBE_FLAG = wardrobeFlag;
-        } catch (FlagConflictException e) {
-            Flag<?> existing = registry.get("cosmetic-enable");
-            if (existing instanceof StateFlag) {
-                COSMETIC_ENABLE_FLAG = (StateFlag) existing;
-            } else {
-                MessagesUtil.sendDebugMessages("WorldGuard Unable to be hooked!", Level.SEVERE);
-                // types don't match - this is bad news! some other plugin conflicts with you
-                // hopefully this never actually happens
+        // WorldGuard never unregisters flags and locks its registry once it has enabled. On a PlugManX
+        // reload the flags from the previous load are still there and registering again throws, so reuse them.
+        COSMETIC_ENABLE_FLAG = registerFlag(registry, new StateFlag("cosmetic-enable", false), StateFlag.class);
+        EMOTES_ENABLE_FLAG = registerFlag(registry, new StateFlag("emotes-enable", false), StateFlag.class);
+        COSMETIC_WARDROBE_FLAG = registerFlag(registry, new StringFlag("cosmetic-wardrobe"), StringFlag.class);
+    }
+
+    /**
+     * Whether the region flags are available. False when HMCCosmetics is loaded for the first time after
+     * WorldGuard has already enabled (e.g. a first PlugManX load), since WorldGuard rejects new flags then.
+     */
+    public static boolean isHooked() {
+        return COSMETIC_ENABLE_FLAG != null && COSMETIC_WARDROBE_FLAG != null;
+    }
+
+    private static <T extends Flag<?>> T registerFlag(FlagRegistry registry, T flag, Class<T> type) {
+        Flag<?> existing = registry.get(flag.getName());
+        if (existing == null) {
+            try {
+                registry.register(flag);
+                return flag;
+            } catch (FlagConflictException | IllegalStateException e) {
+                existing = registry.get(flag.getName());
             }
         }
+        if (type.isInstance(existing)) return type.cast(existing);
+        // types don't match - this is bad news! some other plugin conflicts with you
+        // hopefully this never actually happens
+        MessagesUtil.sendDebugMessages("WorldGuard Unable to be hooked! Flag " + flag.getName() + " could not be registered.", Level.SEVERE);
+        return null;
     }
 
     /**

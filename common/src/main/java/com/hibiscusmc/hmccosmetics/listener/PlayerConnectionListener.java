@@ -57,6 +57,18 @@ public class PlayerConnectionListener implements Listener {
         }
     }
 
+    /**
+     * Loads a player who was already online when HMCCosmetics was enabled (PlugManX load/reload),
+     * doing what {@link #onPlayerJoin(PlayerJoinEvent)} would have done for them.
+     */
+    public void loadOnlinePlayer(@NotNull Player player) {
+        if (CosmeticUsers.getUser(player) != null) return;
+        HMCCScheduler.runEntity(player, () -> {
+            cleanupDummyItems(player);
+            loadUserData(player);
+        });
+    }
+
     private void loadUserData(final Player player) {
         if(!player.isOnline()) return;
         final UUID playerId = player.getUniqueId();
