@@ -5,11 +5,9 @@ import com.hibiscusmc.hmccosmetics.cosmetic.Cosmetic;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticArmorType;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBackpackType;
-import com.hibiscusmc.hmccosmetics.gui.Menu;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
 import com.hibiscusmc.hmccosmetics.user.manager.UserBackpackManager;
-import com.hibiscusmc.hmccosmetics.user.manager.UserWardrobeManager;
 import com.hibiscusmc.hmccosmetics.listener.PlayerMovementListener;
 import com.hibiscusmc.hmccosmetics.util.HMCCInventoryUtils;
 import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
@@ -148,8 +146,10 @@ public class CosmeticPacketInterface implements PacketInterface {
 
         if (user.getUserBackpackManager() == null) return PacketAction.NOTHING;
 
+        int backpackId = user.getUserBackpackManager().getFirstArmorStandId();
         List<Integer> originalPassengers = wrapper.getPassengers();
-        List<Integer> passengers = new ArrayList<>(user.getUserBackpackManager().getFirstArmorStandId());
+        List<Integer> passengers = new ArrayList<>(originalPassengers.size() + 1);
+        if (!originalPassengers.contains(backpackId)) passengers.add(backpackId);
         passengers.addAll(originalPassengers);
         wrapper.setPassengers(passengers);
         return PacketAction.CHANGED;
@@ -193,8 +193,8 @@ public class CosmeticPacketInterface implements PacketInterface {
     }
 
     @Override
-    public @NotNull PacketAction readPlayerPosition(@NotNull Player player, @NotNull PlayerPositionWrapper wrapper) {
-        PlayerMovementListener.handlePositionPacket(player, wrapper);
+    public @NotNull PacketAction writePlayerPosition(@NotNull Player player, @NotNull PlayerTeleportWrapper wrapper) {
+        PlayerMovementListener.handleTeleportPacket(player, wrapper);
         return PacketAction.NOTHING;
     }
 
@@ -243,19 +243,13 @@ public class CosmeticPacketInterface implements PacketInterface {
 
     @Override
     public @NotNull PacketAction readPlayerArm(@NotNull Player player, @NotNull PlayerSwingWrapper wrapper) {
-        CosmeticUser user = CosmeticUsers.getUser(player);
-        if (user == null || !user.isInWardrobe() || !user.getWardrobeManager().getWardrobeStatus().equals(UserWardrobeManager.WardrobeStatus.RUNNING)) return PacketAction.NOTHING;
-
-        Menu menu = user.getWardrobeManager().getLastOpenMenu();
-        if (menu == null) return PacketAction.NOTHING;
-        menu.openMenu(user);
-        return PacketAction.CANCELLED;
+        return PacketAction.NOTHING;
     }
 
     @Override
     public @NotNull PacketAction readEntityHandle(@NotNull Player player, @NotNull PlayerInteractWrapper wrapper) {
         CosmeticUser user = CosmeticUsers.getUser(player);
         if (user == null || !user.isInWardrobe()) return PacketAction.NOTHING;
-        else return PacketAction.CANCELLED;
+        return PacketAction.CANCELLED;
     }
 }

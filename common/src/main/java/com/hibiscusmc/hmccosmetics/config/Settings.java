@@ -236,7 +236,11 @@ public class Settings {
             }
             boolean addEnchantments = value.node("add-enchantments").getBoolean(false);
             boolean requireEmpty = value.node("require-empty").getBoolean(false);
-            boolean addElytraComponent = value.node("add-elytra-componnt").getBoolean(true);
+            ConfigurationNode elytraComponent = value.node("add-elytra-component");
+            // Keep existing installations working until their configuration is regenerated.
+            boolean addElytraComponent = elytraComponent.virtual()
+                    ? value.node("add-elytra-componnt").getBoolean(true)
+                    : elytraComponent.getBoolean(true);
             boolean equipmentNamePassThrough = value.node("passthrough-name").getBoolean(true);
             boolean equipmentLorePassThrough = value.node("passthrough-lore").getBoolean(true);
             boolean equipmentAttributesPassThrough = value.node("passthrough-attributes").getBoolean(true);

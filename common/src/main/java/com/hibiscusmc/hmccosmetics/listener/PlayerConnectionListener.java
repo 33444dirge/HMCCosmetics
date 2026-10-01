@@ -11,6 +11,7 @@ import com.hibiscusmc.hmccosmetics.gui.Menus;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
 import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
+import com.hibiscusmc.hmccosmetics.util.HMCCServerUtils;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -19,13 +20,19 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class PlayerConnectionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(@NotNull PlayerJoinEvent event) {
+        cleanupDummyItems(event.getPlayer());
+
         if (DatabaseSettings.isEnabledDelay()) {
             MessagesUtil.sendDebugMessages("Delay Enabled with " + DatabaseSettings.getDelayLength() + " ticks");
             HMCCScheduler.runEntityLater(
@@ -35,6 +42,18 @@ public class PlayerConnectionListener implements Listener {
             );
         } else {
             this.loadUserData(event.getPlayer());
+        }
+    }
+
+    private void cleanupDummyItems(Player player) {
+        for (int i = 0; i < player.getInventory().getSize(); i++) {
+            ItemStack item = player.getInventory().getItem(i);
+            if (item == null || !item.hasItemMeta()) continue;
+
+            ItemMeta meta = item.getItemMeta();
+            if (meta != null && meta.getPersistentDataContainer().has(HMCCServerUtils.getWardrobeDummyItemKey(), PersistentDataType.BYTE)) {
+                player.getInventory().setItem(i, null);
+            }
         }
     }
 
@@ -69,6 +88,11 @@ public class PlayerConnectionListener implements Listener {
             });
         }).exceptionally(ex -> {
             MessagesUtil.sendDebugMessages("Unable to load Cosmetic User " + playerId + ". Exception: " + ex.getMessage());
+            HMCCosmeticsPlugin.getInstance().getLogger().log(
+                Level.WARNING,
+                "Unable to load cosmetic data for online player " + playerId,
+                ex
+            );
             return null;
         });
     }

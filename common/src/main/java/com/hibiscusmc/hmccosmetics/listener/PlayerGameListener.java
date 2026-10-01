@@ -7,6 +7,7 @@ import com.hibiscusmc.hmccosmetics.cosmetic.Cosmetic;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBackpackType;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBalloonType;
+import com.hibiscusmc.hmccosmetics.gui.Menu;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
 import com.hibiscusmc.hmccosmetics.user.manager.UserWardrobeManager;
@@ -44,14 +45,22 @@ import java.util.Map;
 import java.util.Set;
 
 public class PlayerGameListener implements Listener {
+    private static final long[] TELEPORT_REFRESH_DELAYS = {4L, 20L, 60L};
+    private static final long[] LOADED_TELEPORT_REFRESH_DELAYS = {4L};
+
     @EventHandler(priority = EventPriority.LOW)
     public void onPlayerClick(@NotNull InventoryClickEvent event) {
+        CosmeticUser user = CosmeticUsers.getUser(event.getWhoClicked().getUniqueId());
+        if (user == null) return;
+        if (user.isInWardrobe()) {
+            event.setCancelled(true);
+            return;
+        }
+
         // || !event.getClickedInventory().getType().equals(InventoryType.PLAYER)
         if (event.getClick().isShiftClick()) return;
         MessagesUtil.sendDebugMessages("inventoryclickevent");
         //if (event.getSlotType() != InventoryType.SlotType.ARMOR) return;
-        CosmeticUser user = CosmeticUsers.getUser(event.getWhoClicked().getUniqueId());
-        if (user == null) return;
         ItemStack item = event.getCurrentItem();
         if (item == null) return;
 
@@ -79,6 +88,17 @@ public class PlayerGameListener implements Listener {
         if (!event.isSneaking()) return;
         if (!user.isInWardrobe()) return;
 
+        Menu menu = user.getWardrobeManager().getLastOpenMenu();
+        if (menu == null) return;
+        menu.openMenu(user);
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        CosmeticUser user = CosmeticUsers.getUser(event.getPlayer().getUniqueId());
+        if (user == null || !user.isInWardrobe()) return;
+
+        event.setCancelled(true);
         user.leaveWardrobe(false);
     }
 
@@ -102,22 +122,25 @@ public class PlayerGameListener implements Listener {
             user.despawnBalloon();
         }
 
-        HMCCScheduler.runEntityLater(player, () -> {
-            if (user.getEntity() == null || user.isInWardrobe()) return; // fixes disconnecting when in wardrobe (the entity stuff)
+        long[] delays = unloadedChunk ? TELEPORT_REFRESH_DELAYS : LOADED_TELEPORT_REFRESH_DELAYS;
+        for (long delay : delays) {
+            HMCCScheduler.runEntityLater(player, () -> refreshTeleportCosmetics(player, user), delay);
+        }
+    }
 
-            if (Settings.getDisabledWorlds().contains(location.getWorld().getName())) {
-                user.hideCosmetics(CosmeticUser.HiddenReason.WORLD);
-            } else {
-                user.showCosmetics(CosmeticUser.HiddenReason.WORLD);
-            }
+    private static void refreshTeleportCosmetics(Player player, CosmeticUser user) {
+        if (user.getEntity() == null || user.isInWardrobe()) return; // fixes disconnecting when in wardrobe (the entity stuff)
 
-            if (!unloadedChunk) return;
+        if (Settings.getDisabledWorlds().contains(player.getWorld().getName())) {
+            user.hideCosmetics(CosmeticUser.HiddenReason.WORLD);
+        } else {
+            user.showCosmetics(CosmeticUser.HiddenReason.WORLD);
+        }
 
-            user.respawnBackpack();
-            user.respawnBalloon();
-            user.updateCosmetic(CosmeticSlot.BACKPACK);
-            user.updateCosmetic(CosmeticSlot.BALLOON);
-        }, 4);
+        if (user.hasCosmeticInSlot(CosmeticSlot.BACKPACK)) user.respawnBackpack();
+        if (user.hasCosmeticInSlot(CosmeticSlot.BALLOON)) user.respawnBalloon();
+        user.updateCosmetic(CosmeticSlot.BACKPACK);
+        user.updateCosmetic(CosmeticSlot.BALLOON);
     }
 
     public static boolean shouldIgnoreWardrobeTeleport(Player player, Location location) {
@@ -229,7 +252,9 @@ public class PlayerGameListener implements Listener {
         if (user == null) return;
         if (user.isInWardrobe()) {
             UserWardrobeManager wardrobeManager = user.getWardrobeManager();
-            if (wardrobeManager != null) wardrobeManager.cycleNpcPitch();
+            if (wardrobeManager != null && WardrobeSettings.getRotationMode() == WardrobeSettings.RotationMode.MANUAL) {
+                wardrobeManager.toggleManualRotationAxis();
+            }
             event.setCancelled(true);
             return;
         }
@@ -274,19 +299,18 @@ public class PlayerGameListener implements Listener {
         CosmeticUser user = CosmeticUsers.getUser(event.getPlayer());
         if (user == null) return;
 
-        if (user.isInWardrobe() && WardrobeSettings.getRotationMode() == WardrobeSettings.RotationMode.MANUAL) {
+        if (user.isInWardrobe()) {
             UserWardrobeManager wardrobeManager = user.getWardrobeManager();
             int slot = event.getNewSlot();
             if (wardrobeManager != null) {
-                if (slot <= 3) wardrobeManager.rotateNpc(true);
-                else if (slot >= 5) wardrobeManager.rotateNpc(false);
+                if (slot <= 3) wardrobeManager.rotateNpcByScroll(true);
+                else if (slot >= 5) wardrobeManager.rotateNpcByScroll(false);
             }
             event.setCancelled(true);
             Player player = event.getPlayer();
             HMCCScheduler.runEntityLater(player, () -> {
                 CosmeticUser currentUser = CosmeticUsers.getUser(player);
                 if (currentUser == null || !currentUser.isInWardrobe()) return;
-                if (WardrobeSettings.getRotationMode() != WardrobeSettings.RotationMode.MANUAL) return;
                 player.getInventory().setHeldItemSlot(4);
             }, 1);
             return;

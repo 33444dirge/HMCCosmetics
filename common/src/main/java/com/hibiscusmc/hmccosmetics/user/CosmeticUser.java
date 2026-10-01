@@ -416,6 +416,8 @@ public class CosmeticUser implements CosmeticHolder {
             //MessagesUtil.sendDebugMessages("GetUserCosemticUser Item is null");
             return new ItemStack(Material.AIR);
         }
+        // Cosmetic templates (including first-person backpack items) are shared and must not be mutated.
+        item = item.clone();
         if (item.hasItemMeta()) {
             ItemMeta itemMeta = item.getItemMeta();
 

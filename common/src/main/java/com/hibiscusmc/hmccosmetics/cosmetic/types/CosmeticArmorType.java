@@ -20,6 +20,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.entity.Entity;
@@ -29,6 +30,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.NamespacedKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -85,13 +87,14 @@ public class CosmeticArmorType extends Cosmetic implements CosmeticUpdateBehavio
         }
         if (slotOption.isEquipmentAttributesPassThrough()) addEquipmentAttributes(cosmeticItem, physicalEquippedItem);
 
-        if (NMSHandlers.getVersion().isLower(MinecraftVersion.v1_21_4)) return cosmeticItem;
-        // Past this point, we know the server is over 1.21.4
         if (slotOption.isAddElytraComponent()
                 && HibiscusCommonsPlugin.isOnPaper()
-                && physicalEquippedItem.hasData(DataComponentTypes.GLIDER)) {
+                && (physicalEquippedItem.getType() == Material.ELYTRA
+                || physicalEquippedItem.hasData(DataComponentTypes.GLIDER))) {
             cosmeticItem.setData(DataComponentTypes.GLIDER);
         }
+        if (NMSHandlers.getVersion().isLower(MinecraftVersion.v1_21_4)) return cosmeticItem;
+        // Past this point, we know the server is over 1.21.4
         if (slotOption.isItemDamagePassThrough() && HibiscusCommonsPlugin.isOnPaper()) {
             if (physicalEquippedItem.hasData(DataComponentTypes.MAX_DAMAGE))
                 cosmeticItem.setData(DataComponentTypes.MAX_DAMAGE, physicalEquippedItem.getData(DataComponentTypes.MAX_DAMAGE));
@@ -152,16 +155,18 @@ public class CosmeticArmorType extends Cosmetic implements CosmeticUpdateBehavio
                 ? cosmeticItem.getData(DataComponentTypes.ATTRIBUTE_MODIFIERS)
                 : null;
         ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.itemAttributes();
+        Set<NamespacedKey> modifierKeys = new HashSet<>();
 
         if (cosmeticModifiers != null) {
-            for (ItemAttributeModifiers.Entry entry : cosmeticModifiers.modifiers()) addAttribute(builder, entry);
+            for (ItemAttributeModifiers.Entry entry : cosmeticModifiers.modifiers()) addAttribute(builder, entry, modifierKeys);
         }
-        for (ItemAttributeModifiers.Entry entry : physicalModifiers.modifiers()) addAttribute(builder, entry);
+        for (ItemAttributeModifiers.Entry entry : physicalModifiers.modifiers()) addAttribute(builder, entry, modifierKeys);
 
         cosmeticItem.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder);
     }
 
-    private void addAttribute(ItemAttributeModifiers.Builder builder, ItemAttributeModifiers.Entry entry) {
+    private void addAttribute(ItemAttributeModifiers.Builder builder, ItemAttributeModifiers.Entry entry, Set<NamespacedKey> modifierKeys) {
+        if (!modifierKeys.add(entry.modifier().getKey())) return;
         EquipmentSlotGroup group = entry.getGroup();
         if (group == null) {
             builder.addModifier(entry.attribute(), entry.modifier());

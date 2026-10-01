@@ -108,4 +108,8 @@ public class HMCCServerUtils {
     public static NamespacedKey getCosmemeticMobKey() {
         return new NamespacedKey(HMCCosmeticsPlugin.getInstance(), "cosmeticmob");
     }
+
+    public static NamespacedKey getWardrobeDummyItemKey() {
+        return new NamespacedKey(HMCCosmeticsPlugin.getInstance(), "wardrobe_dummy_item");
+    }
 }

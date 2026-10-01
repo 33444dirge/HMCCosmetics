@@ -28,6 +28,8 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -73,6 +75,7 @@ public class UserWardrobeManager {
     private Menu lastOpenMenu;
     private int npcYaw;
     private int npcPitch;
+    private ManualRotationAxis manualRotationAxis = ManualRotationAxis.HORIZONTAL;
 
     private NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
     private NMSPacketSender packetSender = NMSHandlers.getHandler().getPacketSender();
@@ -147,6 +150,17 @@ public class UserWardrobeManager {
             // Player
             HMCCScheduler.teleportAsync(player, viewingLocation);
             player.setInvisible(true);
+            player.getInventory().setHeldItemSlot(4);
+            ItemStack mainHandItem = player.getInventory().getItemInMainHand();
+            if (mainHandItem.getType().isAir()) {
+                ItemStack dummyItem = new ItemStack(Material.DIRT);
+                ItemMeta meta = dummyItem.getItemMeta();
+                if (meta != null) {
+                    meta.getPersistentDataContainer().set(HMCCServerUtils.getWardrobeDummyItemKey(), PersistentDataType.BYTE, (byte) 1);
+                    dummyItem.setItemMeta(meta);
+                }
+                player.getInventory().setItemInMainHand(dummyItem);
+            }
             viewerPackets.add(packetBuilder.buildPlayerGamemodeChangePacket(GameMode.SPECTATOR));
             viewerPackets.add(packetBuilder.buildEntityCameraPacket(ARMORSTAND_ID));
 
@@ -264,6 +278,13 @@ public class UserWardrobeManager {
             // Player
             HMCCPacketManager.sendPacket(packetBuilder.buildEntityCameraPacket(player.getEntityId()), viewer);
             user.getPlayer().setInvisible(false);
+            ItemStack mainHandItem = player.getInventory().getItemInMainHand();
+            if (mainHandItem.hasItemMeta()) {
+                ItemMeta meta = mainHandItem.getItemMeta();
+                if (meta != null && meta.getPersistentDataContainer().has(HMCCServerUtils.getWardrobeDummyItemKey(), PersistentDataType.BYTE)) {
+                    player.getInventory().setItemInMainHand(null);
+                }
+            }
 
             // Armorstand
             HMCCPacketManager.sendEntityDestroyPacket(ARMORSTAND_ID, viewer); // Sucess
@@ -314,7 +335,23 @@ public class UserWardrobeManager {
         run.run();
     }
 
-    public void rotateNpc(boolean left) {
+    public void toggleManualRotationAxis() {
+        if (!active || WardrobeSettings.getRotationMode() != WardrobeSettings.RotationMode.MANUAL) return;
+        manualRotationAxis = manualRotationAxis == ManualRotationAxis.HORIZONTAL ? ManualRotationAxis.VERTICAL : ManualRotationAxis.HORIZONTAL;
+        Player player = user.getPlayer();
+        if (player == null) return;
+        MessagesUtil.sendMessage(player, manualRotationAxis == ManualRotationAxis.HORIZONTAL ? "wardrobe-rotation-horizontal" : "wardrobe-rotation-vertical");
+    }
+
+    public void rotateNpcByScroll(boolean reverse) {
+        if (WardrobeSettings.getRotationMode() == WardrobeSettings.RotationMode.MANUAL && manualRotationAxis == ManualRotationAxis.HORIZONTAL) {
+            rotateNpc(reverse);
+        } else {
+            rotateNpcPitch(reverse);
+        }
+    }
+
+    private void rotateNpc(boolean left) {
         if (!active || WardrobeSettings.getRotationMode() != WardrobeSettings.RotationMode.MANUAL) return;
         int amount = WardrobeSettings.getRotationSpeed();
         if (amount <= 0) return;
@@ -325,14 +362,13 @@ public class UserWardrobeManager {
         playRotationSound(player);
     }
 
-    public void cycleNpcPitch() {
+    private void rotateNpcPitch(boolean up) {
         if (!active) return;
         int amount = WardrobeSettings.getPitchStep();
         if (amount <= 0) return;
         Player player = user.getPlayer();
         if (player == null) return;
-        npcPitch += amount;
-        if (npcPitch > MANUAL_MAX_PITCH) npcPitch = MANUAL_MIN_PITCH;
+        npcPitch = clampPitch(npcPitch + amount * (up ? -1 : 1));
         sendNpcRotation(Collections.singletonList(player));
         playRotationSound(player);
     }
@@ -380,6 +416,10 @@ public class UserWardrobeManager {
         while (yaw > 179) yaw -= 360;
         while (yaw < -180) yaw += 360;
         return yaw;
+    }
+
+    private int clampPitch(int pitch) {
+        return Math.max(MANUAL_MIN_PITCH, Math.min(MANUAL_MAX_PITCH, pitch));
     }
 
     private void update() {
@@ -453,6 +493,11 @@ public class UserWardrobeManager {
         STARTING,
         RUNNING,
         STOPPING,
+    }
+
+    private enum ManualRotationAxis {
+        HORIZONTAL,
+        VERTICAL
     }
 
 }

@@ -8,7 +8,7 @@ import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
 import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import lombok.extern.slf4j.Slf4j;
-import me.lojosho.hibiscuscommons.packets.data.PlayerPositionWrapper;
+import me.lojosho.hibiscuscommons.packets.data.PlayerTeleportWrapper;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -58,17 +58,14 @@ public class PlayerMovementListener implements Listener {
         }
     }
 
-    public static void handlePositionPacket(Player player, PlayerPositionWrapper wrapper) {
-        if (!wrapper.isHasPosition()) return;
-
+    public static void handleTeleportPacket(Player player, PlayerTeleportWrapper wrapper) {
         HMCCScheduler.runEntity(player, () -> {
             World world = player.getWorld();
-            SmallLocation next = SmallLocation.fromPacket(wrapper, world.getUID());
+            SmallLocation next = new SmallLocation(wrapper.getX(), wrapper.getY(), wrapper.getZ(), wrapper.getYaw(), world.getUID());
             SmallLocation previous = packetLocations.put(player.getUniqueId(), next);
-            if (previous == null || !previous.isTeleportLike(next)) return;
 
             HMCCosmeticsPlugin.getInstance().getPlayerSearchManager().handlePlayerPosition(player);
-            Location location = new Location(world, next.x(), next.y(), next.z(), next.yaw(), 0);
+            Location location = new Location(world, next.x(), next.y(), next.z(), next.yaw(), wrapper.getPitch());
             if (PlayerGameListener.shouldIgnoreWardrobeTeleport(player, location)) return;
 
             if (Bukkit.getPluginManager().getPlugin("WorldGuard") != null && Settings.isWorldGuardMoveCheck()) {
@@ -76,7 +73,8 @@ public class PlayerMovementListener implements Listener {
             }
 
             boolean unloadedChunk = !world.isChunkLoaded(next.chunkX(), next.chunkZ());
-            PlayerGameListener.handleTeleport(player, location, unloadedChunk, !previous.world().equals(next.world()));
+            boolean changedWorld = previous != null && !previous.world().equals(next.world());
+            PlayerGameListener.handleTeleport(player, location, unloadedChunk, changedWorld);
         });
     }
 
@@ -144,10 +142,6 @@ public class PlayerMovementListener implements Listener {
 
         public static SmallLocation fromLocation(final Location location) {
             return new SmallLocation(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getWorld().getUID());
-        }
-
-        public static SmallLocation fromPacket(final PlayerPositionWrapper wrapper, final UUID world) {
-            return new SmallLocation(wrapper.getX(), wrapper.getY(), wrapper.getZ(), wrapper.getYaw(), world);
         }
     }
 }
