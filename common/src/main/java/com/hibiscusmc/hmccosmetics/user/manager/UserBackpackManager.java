@@ -3,6 +3,7 @@ package com.hibiscusmc.hmccosmetics.user.manager;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
 import com.hibiscusmc.hmccosmetics.cosmetic.types.CosmeticBackpackType;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
+import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import com.hibiscusmc.hmccosmetics.util.packets.HMCCPacketManager;
 import lombok.Getter;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class UserBackpackManager {
@@ -129,6 +131,22 @@ public class UserBackpackManager {
             }
             this.particleCloud = new CopyOnWriteArrayList<>();
         }
+    }
+
+    /** Remove packet-only entities from surviving viewers without touching the retired owner. */
+    public CompletableFuture<Void> removeForRetiredOwner() {
+        List<Integer> ids = new ArrayList<>();
+        ids.add(invisibleArmorStand);
+        ids.addAll(particleCloud);
+        List<Player> viewers = List.copyOf(getEntityManager().getViewers());
+        getEntityManager().getViewers().clear();
+        particleCloud = new CopyOnWriteArrayList<>();
+        List<CompletableFuture<Void>> cleanup = new ArrayList<>();
+        for (Player viewer : viewers) {
+            cleanup.add(HMCCScheduler.requireEntityCleanup(viewer,
+                () -> HMCCPacketManager.sendEntityDestroyPacket(ids, List.of(viewer))));
+        }
+        return CompletableFuture.allOf(cleanup.toArray(CompletableFuture[]::new));
     }
 
     public void hideBackpack() {

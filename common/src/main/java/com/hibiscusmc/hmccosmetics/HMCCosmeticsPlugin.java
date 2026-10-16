@@ -27,11 +27,11 @@ import com.hibiscusmc.hmccosmetics.packets.CosmeticPacketInterface;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUsers;
 import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
+import com.hibiscusmc.hmccosmetics.util.ShutdownHandoff;
 import com.hibiscusmc.hmccosmetics.util.search.OctreePlayerSearchEngine;
 import com.hibiscusmc.hmccosmetics.util.search.PlayerSearchManager;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import com.hibiscusmc.hmccosmetics.util.TranslationUtil;
-import dev.triumphteam.gui.guis.BaseGui;
 import lombok.Getter;
 import me.lojosho.hibiscuscommons.HibiscusCommonsPlugin;
 import me.lojosho.hibiscuscommons.HibiscusPlugin;
@@ -54,7 +54,17 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.permissions.Permission;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public final class HMCCosmeticsPlugin extends HibiscusPlugin {
 
@@ -64,6 +74,8 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
     @Getter
     private PlayerSearchManager playerSearchManager;
     private HMCPlaceholderExpansion placeholderExpansion;
+    private volatile boolean shuttingDown;
+    private ShutdownMenuGuard shutdownMenuGuard;
 
     private final Hook hmcCosmeticsHook;
     private final Hook betterHudHook;
@@ -143,6 +155,10 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
         getServer().getPluginManager().registerEvents(new PlayerMovementListener(), this);
         getServer().getPluginManager().registerEvents(this.playerSearchManager.getEngine(), this);
 
+        // The listener is owned by Commons and stays active during Folia's cross-region cleanup.
+        shutdownMenuGuard = new ShutdownMenuGuard(this);
+        getServer().getPluginManager().registerEvents(shutdownMenuGuard, HibiscusCommonsPlugin.getInstance());
+
         if (HibiscusCommonsPlugin.isOnPaper()) {
             getServer().getPluginManager().registerEvents(new PaperPlayerGameListener(), this);
         }
@@ -198,6 +214,10 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
         return new Hook[]{hmcCosmeticsHook, betterHudHook, vulcanHook};
     }
 
+    public boolean isAcceptingWork() {
+        return !shuttingDown && !isDisabled() && isEnabled();
+    }
+
     @Override
     public void onLoad() {
         // WorldGuard
@@ -208,36 +228,80 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
 
     @Override
     public void onEnd() {
-        // Plugin shutdown logic
-        for (CosmeticUser user : CosmeticUsers.values()) {
-            final Player player = user.getPlayer();
-            Runnable cleanup = () -> {
-                // Menus belong to this plugin's classloader; after a PlugManX unload their click handlers would be gone
-                if (player != null && player.getOpenInventory().getTopInventory().getHolder(false) instanceof BaseGui) {
-                    player.closeInventory();
-                }
-                if (user.isInWardrobe()) {
-                    user.leaveWardrobe(true);
-                }
-                // Cancels the tick task and removes the balloon/backpack entities, otherwise a PlugManX
-                // reload leaves them behind and the new load spawns a second set
-                user.destroy();
-            };
-
-            if (player == null) {
-                cleanup.run();
-            } else if (HMCCScheduler.ownsEntity(player)) {
-                cleanup.run();
-                Database.save(user);
-            } else {
-                // Folia, player is on another region: save now while the connection is still open,
-                // then let the player's own region do the entity cleanup
-                Database.save(user);
-                HMCCScheduler.runEntityLater(player, cleanup, 1);
-            }
-            CosmeticUsers.removeUser(user.getUniqueId());
+        List<CosmeticUser> users;
+        synchronized (this) {
+            shuttingDown = true;
+            users = new ArrayList<>(CosmeticUsers.values());
         }
-        Database.close();
+        ShutdownHandoff handoff = ShutdownHandoff.publish();
+
+        Map<UUID, CosmeticUser> byId = new HashMap<>();
+        Throwable saveFailure = null;
+        for (CosmeticUser user : users) {
+            byId.put(user.getUniqueId(), user);
+            try {
+                Database.save(user);
+            } catch (RuntimeException ex) {
+                getLogger().log(Level.SEVERE, "Unable to save cosmetics for " + user.getUniqueId() + " during shutdown", ex);
+                if (saveFailure == null) saveFailure = ex;
+                else saveFailure.addSuppressed(ex);
+            } finally {
+                CosmeticUsers.removeUserIfSame(user);
+            }
+        }
+        CompletableFuture<Void> databaseClosed;
+        try {
+            databaseClosed = Database.close();
+        } catch (RuntimeException ex) {
+            getLogger().log(Level.SEVERE, "Unable to close the cosmetic database during shutdown", ex);
+            databaseClosed = CompletableFuture.failedFuture(ex);
+        }
+
+        List<CompletableFuture<HMCCScheduler.CleanupResult>> cleanups = new ArrayList<>();
+        for (Player player : List.copyOf(Bukkit.getOnlinePlayers())) {
+            cleanups.add(cleanupPlayer(player, byId.remove(player.getUniqueId())));
+        }
+        for (CosmeticUser user : byId.values()) {
+            Player player = user.getPlayer();
+            if (player != null) {
+                cleanups.add(cleanupPlayer(player, user));
+            } else {
+                try {
+                    cleanups.add(observeCleanup(user.getUniqueId(), user.destroyForRetirement()
+                        .thenApply(ignored -> HMCCScheduler.CleanupResult.RETIRED_CLEANED)));
+                } catch (RuntimeException ex) {
+                    getLogger().log(Level.SEVERE, "Unable to clean up disconnected cosmetic user " + user.getUniqueId(), ex);
+                    cleanups.add(CompletableFuture.failedFuture(ex));
+                }
+            }
+        }
+        if (shutdownMenuGuard != null) shutdownMenuGuard.finishTracking();
+
+        CompletableFuture<Void> cleanupsDone = CompletableFuture.allOf(cleanups.toArray(CompletableFuture[]::new))
+            .thenRun(() -> {
+                for (CompletableFuture<HMCCScheduler.CleanupResult> cleanup : cleanups) {
+                    HMCCScheduler.CleanupResult result = cleanup.join();
+                    if (result != HMCCScheduler.CleanupResult.COMPLETED
+                        && result != HMCCScheduler.CleanupResult.RETIRED_CLEANED) {
+                        throw new IllegalStateException("Shutdown cleanup did not finish: " + result);
+                    }
+                }
+            });
+        Throwable finalSaveFailure = saveFailure;
+        CompletableFuture<Void> databaseWithinLimit = databaseClosed.thenRun(() -> {}).orTimeout(30, TimeUnit.SECONDS);
+        CompletableFuture.allOf(cleanupsDone, databaseWithinLimit).whenComplete((ignored, error) -> {
+            Throwable failure = error;
+            if (finalSaveFailure != null) {
+                if (failure == null) failure = finalSaveFailure;
+                else failure.addSuppressed(finalSaveFailure);
+            }
+            if (failure == null) handoff.succeed();
+            else {
+                handoff.fail(failure);
+                getLogger().log(Level.SEVERE,
+                    "Shutdown handoff failed; the next HMCCosmetics instance will not read stale cosmetic data", failure);
+            }
+        });
 
         if (placeholderExpansion != null && placeholderExpansion.isRegistered()) placeholderExpansion.unregister();
         placeholderExpansion = null;
@@ -249,6 +313,88 @@ public final class HMCCosmeticsPlugin extends HibiscusPlugin {
             HandlerList.unregisterAll(hook);
             hook.setDetected(false);
             hook.setActive(false);
+            unregisterOwnHook(hook);
+        }
+    }
+
+    private CompletableFuture<HMCCScheduler.CleanupResult> cleanupPlayer(Player player, CosmeticUser user) {
+        UUID playerId = player.getUniqueId();
+        if (shutdownMenuGuard != null) shutdownMenuGuard.track(playerId);
+        CompletableFuture<Void> independentCleanup = new CompletableFuture<>();
+        CompletableFuture<HMCCScheduler.CleanupResult> playerCleanup = HMCCScheduler.runEntityCleanup(player, () -> {
+            if (player.isOnline() && shutdownMenuGuard != null
+                && shutdownMenuGuard.isOldMenu(player.getOpenInventory().getTopInventory())) {
+                player.closeInventory();
+            }
+            if (shutdownMenuGuard != null) shutdownMenuGuard.resolved(playerId);
+            if (user == null) {
+                independentCleanup.complete(null);
+            } else {
+                user.destroyForShutdown().whenComplete((ignored, error) -> {
+                    if (error != null) independentCleanup.completeExceptionally(error);
+                    else independentCleanup.complete(null);
+                });
+            }
+        });
+        playerCleanup.whenComplete((result, error) -> {
+            if (user == null || (error == null && result != HMCCScheduler.CleanupResult.REJECTED)) return;
+            try {
+                user.destroyForRetirement().whenComplete((ignored, resourceError) -> {
+                    if (resourceError != null) getLogger().log(Level.SEVERE,
+                        "Unable to remove independent cosmetics for " + playerId, resourceError);
+                });
+            } catch (RuntimeException ex) {
+                getLogger().log(Level.SEVERE, "Unable to schedule independent cosmetic cleanup for " + playerId, ex);
+            }
+        });
+        CompletableFuture<HMCCScheduler.CleanupResult> cleanup = playerCleanup.thenCompose(result -> {
+            if (result == HMCCScheduler.CleanupResult.COMPLETED) {
+                return independentCleanup.thenApply(ignored -> HMCCScheduler.CleanupResult.COMPLETED);
+            }
+            if (result == HMCCScheduler.CleanupResult.RETIRED) {
+                if (shutdownMenuGuard != null) shutdownMenuGuard.resolved(playerId);
+                if (user == null) return CompletableFuture.completedFuture(HMCCScheduler.CleanupResult.RETIRED_CLEANED);
+                return user.destroyForRetirement()
+                    .thenApply(ignored -> HMCCScheduler.CleanupResult.RETIRED_CLEANED);
+            }
+            return CompletableFuture.completedFuture(result);
+        });
+        return observeCleanup(playerId, cleanup);
+    }
+
+    private CompletableFuture<HMCCScheduler.CleanupResult> observeCleanup(
+        UUID playerId, CompletableFuture<HMCCScheduler.CleanupResult> cleanup) {
+        CompletableFuture<HMCCScheduler.CleanupResult> observed = new CompletableFuture<>();
+        cleanup.whenComplete((result, error) -> {
+            if (error != null) observed.completeExceptionally(error);
+            else observed.complete(result);
+        });
+        if (!observed.isDone()) {
+            CompletableFuture.delayedExecutor(10, TimeUnit.SECONDS).execute(
+                () -> observed.complete(HMCCScheduler.CleanupResult.TIMED_OUT));
+        }
+        return observed.whenComplete((result, error) -> {
+                if (error != null || result == HMCCScheduler.CleanupResult.REJECTED
+                    || result == HMCCScheduler.CleanupResult.TIMED_OUT) {
+                    getLogger().log(Level.SEVERE, "Unable to finish shutdown cleanup for " + playerId
+                        + ": " + (error == null ? result : "exception"), error);
+                }
+            });
+    }
+
+    /** Commons 0.9.2 has no public removeHook API; remove only this exact registration. */
+    private void unregisterOwnHook(Hook hook) {
+        try {
+            Field poolField = Hooks.class.getDeclaredField("HOOK_POOL");
+            poolField.setAccessible(true);
+            Object value = poolField.get(null);
+            if (!(value instanceof Map<?, ?> pool)) throw new IllegalStateException("HOOK_POOL is not a Map");
+            String key = hook.getId().toLowerCase(Locale.ROOT);
+            synchronized (pool) {
+                if (pool.get(key) == hook) pool.remove(key);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            getLogger().log(Level.WARNING, "Unable to unregister HibiscusCommons hook " + hook.getId(), ex);
         }
     }
 

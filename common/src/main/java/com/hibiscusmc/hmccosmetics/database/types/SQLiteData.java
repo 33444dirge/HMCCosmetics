@@ -1,7 +1,7 @@
 package com.hibiscusmc.hmccosmetics.database.types;
 
 import com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin;
-import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
+import com.hibiscusmc.hmccosmetics.database.Database;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 
 import java.io.File;
@@ -47,7 +47,7 @@ public class SQLiteData extends SQLData {
     @Override
     @SuppressWarnings("resource")
     public void clear(UUID uniqueId) {
-        HMCCScheduler.runAsync(() -> {
+        Database.submitWrite(() -> {
             try (PreparedStatement preparedSt = preparedStatement("DELETE FROM COSMETICDATABASE WHERE UUID=?;")){
                 preparedSt.setString(1, uniqueId.toString());
                 preparedSt.executeUpdate();
@@ -61,8 +61,8 @@ public class SQLiteData extends SQLData {
     public void close() {
         try {
             if (connection != null && !connection.isClosed()) connection.close();
-        } catch (SQLException e) {
-            MessagesUtil.sendDebugMessages("Unable to close the SQLite connection: " + e.getMessage(), Level.WARNING);
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to close the SQLite connection", ex);
         }
     }
 

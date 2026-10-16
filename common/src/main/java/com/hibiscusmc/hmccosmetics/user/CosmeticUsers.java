@@ -39,6 +39,11 @@ public class CosmeticUsers {
         COSMETIC_USERS.remove(user.getUniqueId());
     }
 
+    /** Avoid removing a newer session if an older load fails or finishes late. */
+    public static void removeUserIfSame(@NotNull CosmeticUser user) {
+        COSMETIC_USERS.remove(user.getUniqueId(), user);
+    }
+
     /**
      * This method allows you to get a CosmeticUser from their UUID. If you are using not internally, HIGHLY recommend to use the API implementation of this.
      * @param uuid The UUID of the user that you wish to lookup.

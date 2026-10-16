@@ -62,45 +62,63 @@ public class PlayerConnectionListener implements Listener {
      * doing what {@link #onPlayerJoin(PlayerJoinEvent)} would have done for them.
      */
     public void loadOnlinePlayer(@NotNull Player player) {
+        if (!HMCCosmeticsPlugin.getInstance().isAcceptingWork()) return;
         if (CosmeticUsers.getUser(player) != null) return;
         HMCCScheduler.runEntity(player, () -> {
+            if (!HMCCosmeticsPlugin.getInstance().isAcceptingWork()) return;
             cleanupDummyItems(player);
             loadUserData(player);
         });
     }
 
     private void loadUserData(final Player player) {
-        if(!player.isOnline()) return;
+        final HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork() || !player.isOnline()) return;
         final UUID playerId = player.getUniqueId();
 
         PlayerPreLoadEvent preLoadEvent = new PlayerPreLoadEvent(playerId);
         Bukkit.getPluginManager().callEvent(preLoadEvent);
-        if (preLoadEvent.isCancelled()) return;
+        if (preLoadEvent.isCancelled() || !plugin.isAcceptingWork()) return;
 
         Database.get(playerId).thenAccept(userData -> {
-            if (!player.isOnline()) return;
+            if (!plugin.isAcceptingWork()) return;
             HMCCScheduler.runEntity(player, () -> {
-                CosmeticUser cosmeticUser = CosmeticUsers.getProvider()
-                    .createCosmeticUser(playerId);
-                cosmeticUser.refreshEntityId(player);
-                cosmeticUser.initialize(userData);
-                cosmeticUser.startTicking();
+                // A query can outlive a quit, a rejoin, or this plugin instance. Serialize the
+                // final admission check with onEnd so shutdown sees every initialized user.
+                synchronized (plugin) {
+                    if (!plugin.isAcceptingWork() || !player.isOnline()
+                        || Bukkit.getPlayer(playerId) != player
+                        || CosmeticUsers.getUser(playerId) != null) return;
 
-                CosmeticUsers.addUser(cosmeticUser);
-                MessagesUtil.sendDebugMessages("Run User Join for " + playerId);
+                    CosmeticUser cosmeticUser = CosmeticUsers.getProvider().createCosmeticUser(playerId);
+                    try {
+                        cosmeticUser.refreshEntityId(player);
+                        cosmeticUser.initialize(userData);
+                        if (!plugin.isAcceptingWork()) {
+                            cosmeticUser.destroyForShutdown();
+                            return;
+                        }
+                        cosmeticUser.startTicking();
+                        CosmeticUsers.addUser(cosmeticUser);
+                        MessagesUtil.sendDebugMessages("Run User Join for " + playerId);
 
-                PlayerLoadEvent playerLoadEvent = new PlayerLoadEvent(cosmeticUser);
-                Bukkit.getPluginManager().callEvent(playerLoadEvent);
+                        Bukkit.getPluginManager().callEvent(new PlayerLoadEvent(cosmeticUser));
 
-                // And finally, launch an update for the cosmetics they have.
-                HMCCScheduler.runEntityLater(player, () -> {
-                    if (cosmeticUser.getPlayer() == null) return;
-                    cosmeticUser.updateCosmetic();
-                }, 4);
+                        HMCCScheduler.runEntityLater(player, () -> {
+                            if (cosmeticUser.getPlayer() == null || CosmeticUsers.getUser(playerId) != cosmeticUser) return;
+                            cosmeticUser.updateCosmetic();
+                        }, 4);
+                    } catch (RuntimeException | Error ex) {
+                        CosmeticUsers.removeUserIfSame(cosmeticUser);
+                        cosmeticUser.destroyForShutdown();
+                        throw ex;
+                    }
+                }
             });
         }).exceptionally(ex -> {
+            if (!plugin.isAcceptingWork()) return null;
             MessagesUtil.sendDebugMessages("Unable to load Cosmetic User " + playerId + ". Exception: " + ex.getMessage());
-            HMCCosmeticsPlugin.getInstance().getLogger().log(
+            plugin.getLogger().log(
                 Level.WARNING,
                 "Unable to load cosmetic data for online player " + playerId,
                 ex
@@ -122,10 +140,8 @@ public class PlayerConnectionListener implements Listener {
         Bukkit.getPluginManager().callEvent(playerUnloadEvent);
 
         if (user.isInWardrobe()) {
-            user.leaveWardrobe(true);
-
-            final Player player = user.getPlayer();
-            if(player != null) player.setInvisible(false);
+            user.forceLeaveWardrobeImmediately();
+            user.showPlayer();
         }
         Menus.removeCooldown(event.getPlayer().getUniqueId()); // Removes any menu cooldowns a player might have
         Database.save(user);

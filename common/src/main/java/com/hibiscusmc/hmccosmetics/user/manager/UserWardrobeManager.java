@@ -76,6 +76,13 @@ public class UserWardrobeManager {
     private int npcYaw;
     private int npcPitch;
     private ManualRotationAxis manualRotationAxis = ManualRotationAxis.HORIZONTAL;
+    private HMCCScheduler.TaskHandle transitionTask;
+    private HMCCScheduler.TaskHandle updateTask;
+    private boolean started;
+    private boolean finished;
+    private boolean originalAllowFlight;
+    private boolean originalFlying;
+    private boolean originalInvisible;
 
     private NMSPacketBuilder packetBuilder = NMSHandlers.getHandler().getPacketBuilder();
     private NMSPacketSender packetSender = NMSHandlers.getHandler().getPacketSender();
@@ -122,7 +129,11 @@ public class UserWardrobeManager {
         setWardrobeStatus(WardrobeStatus.STARTING);
         Player player = user.getPlayer();
 
+        started = true;
         this.originalGamemode = player.getGameMode();
+        this.originalAllowFlight = player.getAllowFlight();
+        this.originalFlying = player.isFlying();
+        this.originalInvisible = player.isInvisible();
         if (WardrobeSettings.isReturnLastLocation() || this.exitLocation == null) {
             this.exitLocation = player.getLocation().clone();
         }
@@ -134,8 +145,11 @@ public class UserWardrobeManager {
         MessagesUtil.sendMessage(player, "opened-wardrobe");
 
         Runnable run = () -> {
+            transitionTask = null;
+            if (finished || wardrobeStatus != WardrobeStatus.STARTING
+                || !HMCCosmeticsPlugin.getInstance().isAcceptingWork()) return;
             if (!player.isOnline()) {
-                end();
+                endImmediately();
                 return;
             }
 
@@ -242,25 +256,43 @@ public class UserWardrobeManager {
                     WardrobeSettings.getTransitionStay(),
                     WardrobeSettings.getTransitionFadeOut()
             );
-            HMCCScheduler.runEntityLater(player, run, WardrobeSettings.getTransitionDelay());
+            transitionTask = HMCCScheduler.runEntityLater(player, run, WardrobeSettings.getTransitionDelay());
         } else {
             run.run();
         }
 
     }
 
+    public void setTransitionTask(HMCCScheduler.TaskHandle task) {
+        transitionTask = task;
+    }
+
     public void end() {
+        finish(false);
+    }
+
+    /** Restore a wardrobe even when its entrance or exit transition has not completed. */
+    public void endImmediately() {
+        finish(true);
+    }
+
+    private void finish(boolean shuttingDown) {
+        if (finished) return;
+        finished = true;
         setWardrobeStatus(WardrobeStatus.STOPPING);
+        boolean hadDisplay = active;
+        active = false;
+        if (transitionTask != null) transitionTask.cancel();
+        if (updateTask != null) updateTask.cancel();
         Player player = user.getPlayer();
-        if (player == null) return;
+        if (player == null || !started) return;
 
         List<Player> viewer = Collections.singletonList(player);
-        if (!Bukkit.getServer().getAllowFlight()) player.setAllowFlight(false);
+        player.setAllowFlight(originalAllowFlight);
+        if (originalAllowFlight) player.setFlying(originalFlying);
         MessagesUtil.sendMessage(player, "closed-wardrobe");
 
         Runnable run = () -> {
-            this.active = false;
-
             // For Wardrobe Temp Cosmetics
             for (Cosmetic cosmetic : user.getCosmetics()) {
                 MessagesUtil.sendDebugMessages("Checking... " + cosmetic.getId());
@@ -271,13 +303,16 @@ public class UserWardrobeManager {
             }
 
             // NPC
-            if (user.isBalloonSpawned()) user.getBalloonManager().sendRemoveLeashPacket(viewer);
-            HMCCPacketManager.sendEntityDestroyPacket(NPC_ID, viewer); // Success
-            HMCCPacketManager.sendRemovePlayerPacket(player, WARDROBE_UUID, viewer); // Success
+            if (hadDisplay) {
+                if (user.isBalloonSpawned()) user.getBalloonManager().sendRemoveLeashPacket(viewer);
+                HMCCPacketManager.sendEntityDestroyPacket(NPC_ID, viewer);
+                HMCCPacketManager.sendRemovePlayerPacket(player, WARDROBE_UUID, viewer);
+                HMCCPacketManager.sendPacket(packetBuilder.buildEntityCameraPacket(player.getEntityId()), viewer);
+                HMCCPacketManager.sendEntityDestroyPacket(ARMORSTAND_ID, viewer);
+            }
 
             // Player
-            HMCCPacketManager.sendPacket(packetBuilder.buildEntityCameraPacket(player.getEntityId()), viewer);
-            user.getPlayer().setInvisible(false);
+            player.setInvisible(originalInvisible);
             ItemStack mainHandItem = player.getInventory().getItemInMainHand();
             if (mainHandItem.hasItemMeta()) {
                 ItemMeta meta = mainHandItem.getItemMeta();
@@ -286,22 +321,19 @@ public class UserWardrobeManager {
                 }
             }
 
-            // Armorstand
-            HMCCPacketManager.sendEntityDestroyPacket(ARMORSTAND_ID, viewer); // Sucess
-
             //PacketManager.sendEntityDestroyPacket(player.getEntityId(), viewer); // Success
-            if (WardrobeSettings.isForceExitGamemode()) {
+            if (hadDisplay && WardrobeSettings.isForceExitGamemode()) {
                 MessagesUtil.sendDebugMessages("Force Exit Gamemode " + WardrobeSettings.getExitGamemode());
                 player.setGameMode(WardrobeSettings.getExitGamemode());
                 HMCCPacketManager.sendPacket(packetBuilder.buildPlayerGamemodeChangePacket(WardrobeSettings.getExitGamemode()), viewer);
-            } else {
+            } else if (hadDisplay) {
                 MessagesUtil.sendDebugMessages("Original Gamemode " + this.originalGamemode);
                 player.setGameMode(this.originalGamemode);
                 HMCCPacketManager.sendPacket(packetBuilder.buildPlayerGamemodeChangePacket(this.originalGamemode), viewer);
             }
-            user.showPlayer();
+            if (!shuttingDown) user.showPlayer();
 
-            if (user.hasCosmeticInSlot(CosmeticSlot.BACKPACK)) {
+            if (!shuttingDown && user.hasCosmeticInSlot(CosmeticSlot.BACKPACK)) {
                 user.respawnBackpack();
                 //PacketManager.ridingMountPacket(player.getEntityId(), VIEWER.getBackpackEntity().getEntityId(), viewer);
             }
@@ -311,7 +343,7 @@ public class UserWardrobeManager {
                 //PacketManager.sendLeashPacket(VIEWER.getBalloonEntity().getPufferfishBalloonId(), player.getEntityId(), viewer);
             }
 
-            HMCCScheduler.teleportAsync(player, getExitLocation(player));
+            if (hadDisplay) HMCCScheduler.teleportAsync(player, getExitLocation(player));
 
             HashMap<EquipmentSlot, ItemStack> items = new HashMap<>();
             for (EquipmentSlot slot : HMCCInventoryUtils.getPlayerArmorSlots()) {
@@ -323,14 +355,14 @@ public class UserWardrobeManager {
                 items.put(EquipmentSlot.HEAD, player.getInventory().getHelmet());
             }
              */
-            HMCCPacketManager.sendPacket(packetBuilder.buildEntityEquipmentSlotUpdatePacket(player.getEntityId(), items), viewer);
+            if (hadDisplay) HMCCPacketManager.sendPacket(packetBuilder.buildEntityEquipmentSlotUpdatePacket(player.getEntityId(), items), viewer);
 
-            if (WardrobeSettings.isEnabledBossbar()) {
+            if (bossBar != null) {
                 //Audience target = BukkitAudiences.create(HMCCosmeticsPlugin.getInstance()).player(player);
                 player.hideBossBar(bossBar);
             }
 
-            user.updateCosmetic();
+            if (!shuttingDown) user.updateCosmetic();
         };
         run.run();
     }
@@ -486,6 +518,7 @@ public class UserWardrobeManager {
                     HMCCPacketManager.equipmentSlotUpdate(user.getPlayer(), true, viewer); // Optifine dumbassery
                 }
         }, 1, 2));
+        updateTask = task.get();
     }
 
     public enum WardrobeStatus {

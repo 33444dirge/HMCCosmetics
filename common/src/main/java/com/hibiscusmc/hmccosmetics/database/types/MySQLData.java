@@ -1,8 +1,8 @@
 package com.hibiscusmc.hmccosmetics.database.types;
 
 import com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin;
+import com.hibiscusmc.hmccosmetics.database.Database;
 import com.hibiscusmc.hmccosmetics.config.section.DatabaseSettings;
-import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 import com.hibiscusmc.hmccosmetics.util.MessagesUtil;
 import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
@@ -62,7 +62,7 @@ public class MySQLData extends SQLData {
 
     @Override
     public void clear(UUID uniqueId) {
-        HMCCScheduler.runAsync(() -> {
+        Database.submitWrite(() -> {
             try (PreparedStatement preparedSt = preparedStatement("DELETE FROM COSMETICDATABASE WHERE UUID=?;")) {
                 preparedSt.setString(1, uniqueId.toString());
                 preparedSt.executeUpdate();
@@ -92,17 +92,11 @@ public class MySQLData extends SQLData {
 
     @Override
     public void close() {
-        Runnable run = () -> {
-            try {
-                if (connection == null) throw new IllegalStateException("Connection is null");
-                connection.close();
-            } catch (SQLException | NullPointerException | IllegalStateException e) {
-                System.out.println(e.getMessage());
-            }
-        };
-        // A disabled plugin can't schedule tasks, so close directly while shutting down
-        if (HMCCosmeticsPlugin.getInstance().isDisabled()) run.run();
-        else HMCCScheduler.runAsync(run);
+        try {
+            if (connection != null && !connection.isClosed()) connection.close();
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to close the MySQL connection", ex);
+        }
     }
 
     @NotNull

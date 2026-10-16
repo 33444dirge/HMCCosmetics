@@ -47,6 +47,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Level;
@@ -57,6 +58,8 @@ public class CosmeticUser implements CosmeticHolder {
     @Getter
     private volatile int entityId = -1;
     private HMCCScheduler.TaskHandle tickTask;
+    private boolean destroyed;
+    private CompletableFuture<Void> shutdownCleanup = CompletableFuture.completedFuture(null);
     private final Map<CosmeticSlot, Cosmetic> playerCosmetics = new ConcurrentHashMap<>();
     private UserWardrobeManager userWardrobeManager;
     private UserBalloonManager userBalloonManager;
@@ -215,10 +218,46 @@ public class CosmeticUser implements CosmeticHolder {
     }
 
     public void destroy() {
+        if (destroyed) return;
+        destroyed = true;
         if(this.tickTask != null) this.tickTask.cancel();
 
         despawnBackpack();
         despawnBalloon();
+    }
+
+    public CompletableFuture<Void> destroyForShutdown() {
+        forceLeaveWardrobeImmediately();
+        if (destroyed) return shutdownCleanup;
+        destroyed = true;
+        if (tickTask != null) tickTask.cancel();
+        UserBalloonManager balloon = userBalloonManager;
+        userBalloonManager = null;
+        CompletableFuture<Void> balloonCleanup = balloon == null ? CompletableFuture.completedFuture(null)
+            : balloon.removeForShutdown();
+        shutdownCleanup = balloonCleanup;
+        // Old visibility tasks may have been cancelled by disable after a normal wardrobe exit.
+        CompletableFuture<Void> visibility = showPlayerForShutdown();
+        shutdownCleanup = CompletableFuture.allOf(visibility, balloonCleanup);
+        despawnBackpack();
+        return shutdownCleanup;
+    }
+
+    /** The player is gone; only touch independent entities and surviving packet viewers. */
+    public CompletableFuture<Void> destroyForRetirement() {
+        if (destroyed) return shutdownCleanup;
+        destroyed = true;
+        if (tickTask != null) tickTask.cancel();
+        userWardrobeManager = null;
+        List<CompletableFuture<Void>> cleanup = new ArrayList<>();
+        UserBackpackManager backpack = userBackpackManager;
+        userBackpackManager = null;
+        if (backpack != null) cleanup.add(backpack.removeForRetiredOwner());
+        UserBalloonManager balloon = userBalloonManager;
+        userBalloonManager = null;
+        if (balloon != null) cleanup.add(balloon.removeForShutdown());
+        shutdownCleanup = CompletableFuture.allOf(cleanup.toArray(CompletableFuture[]::new));
+        return shutdownCleanup;
     }
 
     @Override
@@ -557,14 +596,24 @@ public class CosmeticUser implements CosmeticHolder {
                     WardrobeSettings.getTransitionStay(),
                     WardrobeSettings.getTransitionFadeOut()
             );
-            HMCCScheduler.runEntityLater(getEntity(), () -> {
-                userWardrobeManager.end();
+            userWardrobe.setTransitionTask(HMCCScheduler.runEntityLater(getEntity(), () -> {
+                if (userWardrobeManager != userWardrobe
+                    || userWardrobe.getWardrobeStatus() != UserWardrobeManager.WardrobeStatus.STOPPING) return;
+                userWardrobe.end();
                 userWardrobeManager = null;
-            }, WardrobeSettings.getTransitionDelay());
+            }, WardrobeSettings.getTransitionDelay()));
         } else {
-            userWardrobeManager.end();
+            userWardrobe.end();
             userWardrobeManager = null;
         }
+    }
+
+    /** Bypass the normal RUNNING-only exit for unload or disconnect cleanup. */
+    public void forceLeaveWardrobeImmediately() {
+        UserWardrobeManager manager = userWardrobeManager;
+        if (manager == null) return;
+        manager.endImmediately();
+        if (userWardrobeManager == manager) userWardrobeManager = null;
     }
 
     /**
@@ -708,9 +757,27 @@ public class CosmeticUser implements CosmeticHolder {
         Player player = getPlayer();
         if (player == null) return;
         for (final Player p : Bukkit.getOnlinePlayers()) {
-            HMCCScheduler.runEntity(p, () -> p.showPlayer(HMCCosmeticsPlugin.getInstance(), player));
-            HMCCScheduler.runEntity(player, () -> player.showPlayer(HMCCosmeticsPlugin.getInstance(), p));
+            if (HMCCosmeticsPlugin.getInstance().isAcceptingWork()) {
+                HMCCScheduler.runEntity(p, () -> p.showPlayer(HMCCosmeticsPlugin.getInstance(), player));
+                HMCCScheduler.runEntity(player, () -> player.showPlayer(HMCCosmeticsPlugin.getInstance(), p));
+            } else {
+                HMCCScheduler.runEntityCleanup(p, () -> p.showPlayer(HMCCosmeticsPlugin.getInstance(), player));
+                HMCCScheduler.runEntityCleanup(player, () -> player.showPlayer(HMCCosmeticsPlugin.getInstance(), p));
+            }
         }
+    }
+
+    private CompletableFuture<Void> showPlayerForShutdown() {
+        Player player = getPlayer();
+        if (player == null) return CompletableFuture.completedFuture(null);
+        List<CompletableFuture<Void>> cleanup = new ArrayList<>();
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            cleanup.add(HMCCScheduler.requireEntityCleanup(viewer,
+                () -> viewer.showPlayer(HMCCosmeticsPlugin.getInstance(), player)));
+            cleanup.add(HMCCScheduler.requireEntityCleanup(player,
+                () -> player.showPlayer(HMCCosmeticsPlugin.getInstance(), viewer)));
+        }
+        return CompletableFuture.allOf(cleanup.toArray(CompletableFuture[]::new));
     }
 
     public void hideCosmetics(@NotNull HiddenReason reason) {

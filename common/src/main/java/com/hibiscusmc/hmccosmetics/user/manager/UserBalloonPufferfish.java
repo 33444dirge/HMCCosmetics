@@ -45,6 +45,14 @@ public class UserBalloonPufferfish extends UserEntity {
         destroyed = true;
     }
 
+    /** Snapshot packet viewers without consulting a player that may already be retired. */
+    public List<Player> detachViewersForShutdown() {
+        List<Player> previous = List.copyOf(getViewers());
+        getViewers().clear();
+        destroyed = true;
+        return previous;
+    }
+
     @Override
     public List<Player> refreshViewers(Location location) {
         if (destroyed) return List.of(); //Prevents refreshing a destroyed entity

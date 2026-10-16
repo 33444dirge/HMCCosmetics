@@ -1,11 +1,10 @@
 package com.hibiscusmc.hmccosmetics.database.types;
 
-import com.hibiscusmc.hmccosmetics.HMCCosmeticsPlugin;
+import com.hibiscusmc.hmccosmetics.database.Database;
 import com.hibiscusmc.hmccosmetics.cosmetic.Cosmetic;
 import com.hibiscusmc.hmccosmetics.cosmetic.CosmeticSlot;
 import com.hibiscusmc.hmccosmetics.database.UserData;
 import com.hibiscusmc.hmccosmetics.user.CosmeticUser;
-import com.hibiscusmc.hmccosmetics.util.HMCCScheduler;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -40,20 +39,18 @@ public abstract class SQLData extends Data {
     @Override
     @SuppressWarnings("resource")
     public void save(CosmeticUser user) {
+        String uniqueId = user.getUniqueId().toString();
+        String serialized = serializeData(user);
         Runnable run = () -> {
             try (PreparedStatement preparedSt = preparedStatement("REPLACE INTO COSMETICDATABASE(UUID,COSMETICS) VALUES(?,?);")) {
-                preparedSt.setString(1, user.getUniqueId().toString());
-                preparedSt.setString(2, serializeData(user));
+                preparedSt.setString(1, uniqueId);
+                preparedSt.setString(2, serialized);
                 preparedSt.executeUpdate();
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
         };
-        if (!HMCCosmeticsPlugin.getInstance().isDisabled()) {
-            HMCCScheduler.runAsync(run);
-        } else {
-            run.run();
-        }
+        Database.submitWrite(run);
     }
 
     public abstract PreparedStatement preparedStatement(String query);

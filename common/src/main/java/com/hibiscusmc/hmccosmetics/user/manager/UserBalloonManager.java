@@ -28,8 +28,10 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 
 public class UserBalloonManager {
@@ -120,18 +122,52 @@ public class UserBalloonManager {
             final ModeledEntity entity = ModelEngineAPI.getModeledEntity(modelEntity);
             if (entity == null) {
                 MessagesUtil.sendDebugMessages("Balloon Removal Failed - Model Entity is Null");
-                return;
+            } else {
+                runModelCleanup(() -> {
+                    entity.destroy();
+                    MessagesUtil.sendDebugMessages("Balloon Model Engine Removal");
+                });
             }
-
-            HMCCScheduler.runEntity(modelEntity, () -> {
-                entity.destroy();
-                MessagesUtil.sendDebugMessages("Balloon Model Engine Removal");
-            });
         }
 
-        HMCCScheduler.runEntity(modelEntity, modelEntity::remove);
+        runModelCleanup(modelEntity::remove);
         cosmeticBalloonType = null;
         MessagesUtil.sendDebugMessages("Balloon Entity Removed");
+    }
+
+    /** Track the real balloon entity independently of the player's scheduler and retirement. */
+    public CompletableFuture<Void> removeForShutdown() {
+        List<CompletableFuture<Void>> cleanup = new ArrayList<>();
+        int pufferfishId = pufferfish.getPufferFishEntityId();
+        for (Player viewer : pufferfish.detachViewersForShutdown()) {
+            cleanup.add(HMCCScheduler.requireEntityCleanup(viewer,
+                () -> HMCCPacketManager.sendEntityDestroyPacket(pufferfishId, List.of(viewer))));
+        }
+        cleanup.add(HMCCScheduler.requireEntityCleanup(modelEntity, () -> {
+            try {
+                if (balloonType == BalloonType.MODELENGINE) {
+                    ModeledEntity modeled = ModelEngineAPI.getModeledEntity(modelEntity);
+                    if (modeled != null) modeled.destroy();
+                }
+            } finally {
+                modelEntity.remove();
+            }
+        }));
+        cosmeticBalloonType = null;
+        return CompletableFuture.allOf(cleanup.toArray(CompletableFuture[]::new));
+    }
+
+    private void runModelCleanup(Runnable task) {
+        if (HMCCosmeticsPlugin.getInstance().isAcceptingWork()) {
+            HMCCScheduler.runEntity(modelEntity, task);
+        } else {
+            HMCCScheduler.runEntityCleanup(modelEntity, task).whenComplete((result, error) -> {
+                if (error != null || result == HMCCScheduler.CleanupResult.REJECTED) {
+                    HMCCosmeticsPlugin.getInstance().getLogger().log(Level.WARNING,
+                        "Unable to remove a balloon entity during shutdown", error);
+                }
+            });
+        }
     }
 
     public void addPlayerToModel(final CosmeticUser user, final CosmeticBalloonType cosmeticBalloonType) {

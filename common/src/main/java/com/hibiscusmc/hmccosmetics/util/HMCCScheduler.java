@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,35 +22,39 @@ public final class HMCCScheduler {
     }
 
     public static TaskHandle run(@NotNull Runnable task) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTask(plugin, task));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTask(plugin, () -> runIfActive(plugin, task)));
         }
-        return new PaperTaskHandle(Bukkit.getGlobalRegionScheduler().run(plugin, scheduledTask -> task.run()));
+        return new PaperTaskHandle(Bukkit.getGlobalRegionScheduler().run(plugin, scheduledTask -> runIfActive(plugin, task)));
     }
 
     public static TaskHandle runLater(@NotNull Runnable task, long delayTicks) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, task, delayTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, () -> runIfActive(plugin, task), delayTicks));
         }
-        return new PaperTaskHandle(Bukkit.getGlobalRegionScheduler().runDelayed(plugin, scheduledTask -> task.run(), delayTicks));
+        return new PaperTaskHandle(Bukkit.getGlobalRegionScheduler().runDelayed(plugin, scheduledTask -> runIfActive(plugin, task), delayTicks));
     }
 
     public static TaskHandle runTimer(@NotNull Runnable task, long delayTicks, long periodTicks) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimer(plugin, task, delayTicks, periodTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimer(plugin, () -> runIfActive(plugin, task), delayTicks, periodTicks));
         }
-        return new PaperTaskHandle(Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, scheduledTask -> task.run(), delayTicks, periodTicks));
+        return new PaperTaskHandle(Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, scheduledTask -> runIfActive(plugin, task), delayTicks, periodTicks));
     }
 
     public static TaskHandle runAsync(@NotNull Runnable task) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskAsynchronously(plugin, task));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> runIfActive(plugin, task)));
         }
-        return new PaperTaskHandle(Bukkit.getAsyncScheduler().runNow(plugin, scheduledTask -> task.run()));
+        return new PaperTaskHandle(Bukkit.getAsyncScheduler().runNow(plugin, scheduledTask -> runIfActive(plugin, task)));
     }
 
     public static TaskHandle runEntity(@NotNull Entity entity, @NotNull Runnable task) {
@@ -58,30 +63,71 @@ public final class HMCCScheduler {
 
     public static TaskHandle runEntityLater(@NotNull Entity entity, @NotNull Runnable task, long delayTicks) {
         HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
-        if (plugin.isDisabled()) return runEntityWhileDisabled(entity, task);
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, task, delayTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLater(plugin, () -> runIfActive(plugin, task), delayTicks));
         }
-        ScheduledTask scheduledTask = entity.getScheduler().runDelayed(plugin, ignored -> task.run(), null, delayTicks);
+        ScheduledTask scheduledTask;
+        try {
+            scheduledTask = entity.getScheduler().runDelayed(plugin, ignored -> runIfActive(plugin, task), null, delayTicks);
+        } catch (IllegalPluginAccessException ex) {
+            if (!plugin.isAcceptingWork()) return NOOP_TASK;
+            throw ex;
+        }
         if (scheduledTask == null) return NOOP_TASK;
         return new PaperTaskHandle(scheduledTask);
     }
 
     /**
-     * Bukkit and Folia refuse new tasks from a disabled plugin, but entity cleanup (balloon removal,
-     * closing menus) still runs while disabling, both on server stop and on a PlugManX unload/reload.
-     * Run it right away when this thread owns the entity, otherwise hand it to HibiscusCommons, which stays enabled.
+     * Only shutdown cleanup may use HibiscusCommons as a task owner. Ordinary work must never be
+     * rescheduled under another plugin after HMCCosmetics has stopped accepting it.
      */
-    private static TaskHandle runEntityWhileDisabled(@NotNull Entity entity, @NotNull Runnable task) {
+    public static CompletableFuture<CleanupResult> runEntityCleanup(@NotNull Entity entity, @NotNull Runnable task) {
+        CompletableFuture<CleanupResult> result = new CompletableFuture<>();
         if (ownsEntity(entity)) {
-            task.run();
-            return NOOP_TASK;
+            completeCleanup(task, result);
+            return result;
         }
         Plugin commons = HibiscusCommonsPlugin.getInstance();
-        if (commons == null || !commons.isEnabled()) return NOOP_TASK;
-        ScheduledTask scheduledTask = entity.getScheduler().run(commons, ignored -> task.run(), null);
-        if (scheduledTask == null) return NOOP_TASK;
-        return new PaperTaskHandle(scheduledTask);
+        if (commons == null || !commons.isEnabled()) {
+            result.complete(CleanupResult.REJECTED);
+            return result;
+        }
+        try {
+            ScheduledTask scheduledTask = entity.getScheduler().run(commons,
+                ignored -> completeCleanup(task, result),
+                () -> result.complete(CleanupResult.RETIRED));
+            if (scheduledTask == null) result.complete(CleanupResult.RETIRED);
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+        }
+        return result;
+    }
+
+    /** A retired target entity is gone; retirement of some other entity says nothing about it. */
+    public static CompletableFuture<Void> requireEntityCleanup(@NotNull Entity entity, @NotNull Runnable task) {
+        return runEntityCleanup(entity, task).thenAccept(result -> {
+            if (result != CleanupResult.COMPLETED && result != CleanupResult.RETIRED) {
+                throw new IllegalStateException("Entity cleanup was not completed: " + result);
+            }
+        });
+    }
+
+    private static void completeCleanup(Runnable task, CompletableFuture<CleanupResult> result) {
+        try {
+            task.run();
+            result.complete(CleanupResult.COMPLETED);
+        } catch (Throwable ex) {
+            result.completeExceptionally(ex);
+        }
+    }
+
+    private static void runIfActive(HMCCosmeticsPlugin plugin, Runnable task) {
+        if (plugin.isAcceptingWork()) task.run();
+    }
+
+    public enum CleanupResult {
+        COMPLETED, RETIRED, RETIRED_CLEANED, REJECTED, TIMED_OUT
     }
 
     /**
@@ -92,21 +138,29 @@ public final class HMCCScheduler {
     }
 
     public static TaskHandle runEntityTimer(@NotNull Entity entity, @NotNull Runnable task, long delayTicks, long periodTicks) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimer(plugin, task, delayTicks, periodTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskTimer(plugin, () -> runIfActive(plugin, task), delayTicks, periodTicks));
         }
-        ScheduledTask scheduledTask = entity.getScheduler().runAtFixedRate(plugin, ignored -> task.run(), null, delayTicks, periodTicks);
+        ScheduledTask scheduledTask;
+        try {
+            scheduledTask = entity.getScheduler().runAtFixedRate(plugin, ignored -> runIfActive(plugin, task), null, delayTicks, periodTicks);
+        } catch (IllegalPluginAccessException ex) {
+            if (!plugin.isAcceptingWork()) return NOOP_TASK;
+            throw ex;
+        }
         if (scheduledTask == null) return NOOP_TASK;
         return new PaperTaskHandle(scheduledTask);
     }
 
     public static TaskHandle runAsyncLater(@NotNull Runnable task, long delayTicks) {
-        Plugin plugin = HMCCosmeticsPlugin.getInstance();
+        HMCCosmeticsPlugin plugin = HMCCosmeticsPlugin.getInstance();
+        if (!plugin.isAcceptingWork()) return NOOP_TASK;
         if (!HibiscusCommonsPlugin.isOnFolia()) {
-            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, task, delayTicks));
+            return new BukkitTaskHandle(Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> runIfActive(plugin, task), delayTicks));
         }
-        return new PaperTaskHandle(Bukkit.getAsyncScheduler().runDelayed(plugin, scheduledTask -> task.run(), delayTicks * 50, TimeUnit.MILLISECONDS));
+        return new PaperTaskHandle(Bukkit.getAsyncScheduler().runDelayed(plugin, scheduledTask -> runIfActive(plugin, task), delayTicks * 50, TimeUnit.MILLISECONDS));
     }
 
     public static CompletableFuture<Boolean> teleportAsync(@NotNull Entity entity, @NotNull Location location) {
