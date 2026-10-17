@@ -39,9 +39,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public class CosmeticArmorType extends Cosmetic implements CosmeticUpdateBehavior {
+    private static final Pattern NAME_LINE_SEPARATOR = Pattern.compile("(?i)<(?:br|newline)>");
     private final EquipmentSlot equipSlot;
+    // One immutable entry per cosmetic; never retains players or mutable ItemStacks.
+    private volatile FormattedName formattedName;
+
+    private record FormattedName(String format, Component name, List<Component> lines) {}
 
     public CosmeticArmorType(String id, ConfigurationNode config) {
         super(id, config);
@@ -115,8 +121,14 @@ public class CosmeticArmorType extends Cosmetic implements CosmeticUpdateBehavio
         ItemMeta physicalMeta = physicalEquippedItem.getItemMeta();
         List<Component> lore = new ArrayList<>();
         if (includeName) lore.addAll(formatEquipmentName(getEquipmentName(physicalEquippedItem, physicalMeta)));
-        if (includeLore && physicalMeta != null && physicalMeta.hasLore() && physicalMeta.lore() != null) lore.addAll(physicalMeta.lore());
-        if (cosmeticMeta.hasLore() && cosmeticMeta.lore() != null) lore.addAll(cosmeticMeta.lore());
+        if (includeLore && physicalMeta != null && physicalMeta.hasLore()) {
+            List<Component> physicalLore = physicalMeta.lore();
+            if (physicalLore != null) lore.addAll(physicalLore);
+        }
+        if (cosmeticMeta.hasLore()) {
+            List<Component> cosmeticLore = cosmeticMeta.lore();
+            if (cosmeticLore != null) lore.addAll(cosmeticLore);
+        }
 
         cosmeticMeta.lore(lore);
         cosmeticItem.setItemMeta(cosmeticMeta);
@@ -132,13 +144,20 @@ public class CosmeticArmorType extends Cosmetic implements CosmeticUpdateBehavio
     }
 
     private List<Component> formatEquipmentName(Component equipmentName) {
+        String format = Settings.getEquipmentNameFormat();
+        FormattedName cached = formattedName;
+        if (cached != null && cached.format().equals(format) && cached.name().equals(equipmentName)) {
+            return cached.lines();
+        }
         List<Component> lines = new ArrayList<>();
-        for (String line : Settings.getEquipmentNameFormat().split("(?i)<(?:br|newline)>", -1)) {
+        for (String line : NAME_LINE_SEPARATOR.split(format, -1)) {
             lines.add(MiniMessage.miniMessage()
                     .deserialize(line, Placeholder.component("equipment_name", equipmentName))
                     .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE));
         }
-        return lines;
+        List<Component> result = List.copyOf(lines);
+        formattedName = new FormattedName(format, equipmentName, result);
+        return result;
     }
 
     private void addEquipmentAttributes(ItemStack cosmeticItem, ItemStack physicalEquippedItem) {
