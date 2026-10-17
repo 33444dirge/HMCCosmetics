@@ -80,6 +80,7 @@ public class UserWardrobeManager {
     private HMCCScheduler.TaskHandle updateTask;
     private boolean started;
     private boolean finished;
+    private boolean scoreboardTeamCreated;
     private boolean originalAllowFlight;
     private boolean originalFlying;
     private boolean originalInvisible;
@@ -186,7 +187,6 @@ public class UserWardrobeManager {
             viewerPackets.add(packetBuilder.buildPlayerInfoAddPacket(player, NPC_ID, WARDROBE_UUID, npcName));
             viewerPackets.add(packetBuilder.buildEntitySpawnPacket(NPC_ID, WARDROBE_UUID, EntityType.PLAYER, npcLocation));
             viewerPackets.add(packetBuilder.buildEntityMetadataPacket(NPC_ID, HMCCPacketManager.getPlayerOverlayMetaData()));
-            viewerPackets.add(packetBuilder.buildPlayerScoreboardRemovePacket(player, npcName));
             viewerPackets.add(packetBuilder.buildPlayerScoreboardCreatePacket(player, npcName));
             viewerPackets.add(packetBuilder.buildPlayerScoreboardAddPlayersPacket(player, npcName));
             viewerPackets.add(packetBuilder.buildEntityAttributePacket(NPC_ID, Attribute.SCALE, 1.0));
@@ -208,6 +208,7 @@ public class UserWardrobeManager {
             }
 
             packetSender.sendBundle(viewerPackets, viewer);
+            scoreboardTeamCreated = true;
 
             if (user.hasCosmeticInSlot(CosmeticSlot.BALLOON)) {
                 if (user.getBalloonManager() == null) user.respawnBalloon();
@@ -293,6 +294,11 @@ public class UserWardrobeManager {
         MessagesUtil.sendMessage(player, "closed-wardrobe");
 
         Runnable run = () -> {
+            if (scoreboardTeamCreated) {
+                HMCCPacketManager.sendPacket(packetBuilder.buildPlayerScoreboardRemovePacket(player, npcName), viewer);
+                scoreboardTeamCreated = false;
+            }
+
             // For Wardrobe Temp Cosmetics
             for (Cosmetic cosmetic : user.getCosmetics()) {
                 MessagesUtil.sendDebugMessages("Checking... " + cosmetic.getId());
